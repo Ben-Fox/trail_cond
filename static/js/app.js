@@ -71,20 +71,22 @@ function searchNearMe() {
     }, () => alert('Location access denied'));
 }
 
+const svgPin = '<svg class="icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>';
+
 function renderResults(results, total) {
     const list = document.getElementById('results-list');
     if (!results.length) {
         list.innerHTML = '<p class="placeholder-text">No results found. Try a different search.</p>';
         return;
     }
-    list.innerHTML = `<p style="font-size:0.85rem;color:#636e72;margin-bottom:0.5rem;">${total} results found</p>` +
+    list.innerHTML = `<p class="results-count">${total} results found</p>` +
         results.map(r => `
             <div class="result-card" onclick="window.location='/facility/${r.id}'">
                 <h3><a href="/facility/${r.id}">${r.name}</a></h3>
                 <p>${stripHtml(r.description || '')}</p>
                 <div class="result-meta">
-                    ${r.type || ''} ${r.ada === 'Yes' ? '♿' : ''}
-                    ${r.lat ? `📍 ${r.lat.toFixed(2)}, ${r.lon.toFixed(2)}` : ''}
+                    ${r.type || ''}
+                    ${r.lat ? `${svgPin} ${r.lat.toFixed(2)}, ${r.lon.toFixed(2)}` : ''}
                 </div>
             </div>
         `).join('');

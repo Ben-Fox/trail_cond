@@ -1,3 +1,7 @@
+const svgThumbUp = '<svg class="icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>';
+const svgThumbDown = '<svg class="icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>';
+const svgAccessible = '<svg class="icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4" r="2"/><path d="M9 22l3-9 3 9"/><path d="M7 12h10"/></svg>';
+
 async function loadReports(facilityId) {
     const container = document.getElementById('reports-list');
     try {
@@ -5,7 +9,7 @@ async function loadReports(facilityId) {
         const data = await res.json();
         const reports = data.reports || [];
         if (!reports.length) {
-            container.innerHTML = '<p style="color:#636e72;">No reports yet. Be the first!</p>';
+            container.innerHTML = '<p class="no-reports">No reports yet. Be the first!</p>';
             return;
         }
         container.innerHTML = reports.map(r => {
@@ -18,14 +22,14 @@ async function loadReports(facilityId) {
                             ${r.trail_condition ? `<span class="badge badge-unknown">${r.trail_condition}</span>` : ''}
                             ${r.trash_level ? `<span class="badge badge-unknown">${r.trash_level.replace('_',' ')}</span>` : ''}
                         </div>
-                        <span style="font-size:0.8rem;color:#636e72;">${r.date_visited || new Date(r.created_at).toLocaleDateString()}</span>
+                        <span class="report-date">${r.date_visited || new Date(r.created_at).toLocaleDateString()}</span>
                     </div>
                     ${r.general_notes ? `<p class="report-notes">${escHtml(r.general_notes)}</p>` : ''}
-                    ${r.accessibility_notes ? `<p class="report-notes"><em>♿ ${escHtml(r.accessibility_notes)}</em></p>` : ''}
+                    ${r.accessibility_notes ? `<p class="report-notes"><em>${svgAccessible} ${escHtml(r.accessibility_notes)}</em></p>` : ''}
                     ${r.photo_url ? `<img class="report-photo" src="${escHtml(r.photo_url)}" alt="Report photo">` : ''}
                     <div class="report-footer">
-                        <button class="vote-btn" onclick="vote(${r.id},'up',this)">👍 ${r.upvotes}</button>
-                        <button class="vote-btn" onclick="vote(${r.id},'down',this)">👎 ${r.downvotes}</button>
+                        <button class="vote-btn" onclick="vote(${r.id},'up',this)">${svgThumbUp} ${r.upvotes}</button>
+                        <button class="vote-btn" onclick="vote(${r.id},'down',this)">${svgThumbDown} ${r.downvotes}</button>
                     </div>
                 </div>
             `;
@@ -50,7 +54,7 @@ async function submitReport(e) {
         if (res.ok) {
             form.reset();
             loadReports(facilityId);
-            alert('Report submitted! Thank you 🌲');
+            alert('Report submitted! Thank you.');
         } else {
             alert('Failed to submit report');
         }

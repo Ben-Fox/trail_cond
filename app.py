@@ -144,6 +144,99 @@ def api_weather():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/weather/history')
+def api_weather_history():
+    lat = request.args.get('lat')
+    lon = request.args.get('lon')
+    if not lat or not lon:
+        return jsonify({'error': 'lat and lon required'}), 400
+    try:
+        from datetime import datetime, timedelta
+        end = datetime.utcnow().date()
+        start = end - timedelta(days=7)
+        r = requests.get(
+            'https://api.open-meteo.com/v1/forecast',
+            params={
+                'latitude': lat, 'longitude': lon,
+                'daily': 'temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,rain_sum',
+                'temperature_unit': 'fahrenheit',
+                'precipitation_unit': 'inch',
+                'timezone': 'auto',
+                'start_date': start.isoformat(),
+                'end_date': end.isoformat(),
+            },
+            timeout=5
+        )
+        data = r.json()
+        daily = data.get('daily', {})
+
+        # Compute inference
+        temps_min = [t for t in (daily.get('temperature_2m_min') or []) if t is not None]
+        temps_max = [t for t in (daily.get('temperature_2m_max') or []) if t is not None]
+        snow_vals = [s for s in (daily.get('snowfall_sum') or []) if s is not None]
+        rain_vals = [r for r in (daily.get('rain_sum') or []) if r is not None]
+
+        total_snow = sum(snow_vals)
+        total_rain = sum(rain_vals)
+        avg_min = sum(temps_min) / len(temps_min) if temps_min else 40
+        avg_max = sum(temps_max) / len(temps_max) if temps_max else 60
+        any_freezing = any(t <= 32 for t in temps_min) if temps_min else False
+
+        reasons = []
+        level = 'green'  # green / yellow / red
+
+        if total_snow > 2:
+            reasons.append(f'{total_snow:.1f}" of snow in the last 7 days')
+            level = 'red'
+        elif total_snow > 0.5:
+            reasons.append(f'{total_snow:.1f}" of snow in the last 7 days')
+            level = 'yellow' if level != 'red' else level
+
+        if total_rain > 1.5:
+            reasons.append(f'{total_rain:.1f}" of rain in the last 7 days')
+            if level == 'green':
+                level = 'yellow'
+        elif total_rain > 0.5:
+            reasons.append(f'{total_rain:.1f}" of rain recently')
+
+        if any_freezing:
+            reasons.append(f'Below-freezing lows (avg low {avg_min:.0f}\u00b0F)')
+            if level == 'green':
+                level = 'yellow'
+
+        if total_snow > 2:
+            prediction = 'Trails likely snowy/icy'
+        elif total_snow > 0.5 and any_freezing:
+            prediction = 'Watch for ice on trails'
+        elif total_rain > 1.5:
+            prediction = 'Trails may be muddy/wet'
+        elif total_rain > 0.5:
+            prediction = 'Some wet spots possible'
+        elif any_freezing and total_rain > 0:
+            prediction = 'Watch for ice'
+        elif avg_max > 50 and total_rain < 0.3 and total_snow < 0.1:
+            prediction = 'Trails likely dry and clear'
+            reasons.append(f'Dry conditions, avg high {avg_max:.0f}\u00b0F')
+        else:
+            prediction = 'Conditions appear moderate'
+            if not reasons:
+                reasons.append(f'Avg high {avg_max:.0f}\u00b0F, avg low {avg_min:.0f}\u00b0F')
+
+        return jsonify({
+            'daily': daily,
+            'inference': {
+                'prediction': prediction,
+                'level': level,
+                'reasons': reasons,
+                'total_snow_inches': round(total_snow, 1),
+                'total_rain_inches': round(total_rain, 1),
+                'avg_high': round(avg_max),
+                'avg_low': round(avg_min),
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/activities')
 def api_activities():
     data = ridb_get('/activities', {'limit': 100})
