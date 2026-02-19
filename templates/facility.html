@@ -75,6 +75,7 @@ async function loadFacility() {
                         <div class="condition-grid">
                             <div>Status: <span class="badge badge-${statusClass}">${statusLabel}</span></div>
                             <div>Trail: <strong>${summary.trail_condition}</strong></div>
+                            <div>Road Access: <strong>${(summary.road_access||'unknown').replace('_',' ')}</strong></div>
                             <div>Trash: <strong>${summary.trash_level}</strong></div>
                             <div>Last reported: ${new Date(summary.last_reported).toLocaleDateString()}</div>
                         </div>
@@ -113,6 +114,17 @@ async function loadFacility() {
                                     <option value="clean">Clean</option>
                                     <option value="some_litter">Some Litter</option>
                                     <option value="lots_of_trash">Lots of Trash</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label>Road Access</label>
+                                <select name="road_access">
+                                    <option value="">-- Select --</option>
+                                    <option value="clear_paved">Roads clear and paved</option>
+                                    <option value="passable_rough">Roads passable but rough</option>
+                                    <option value="muddy_snowy">Roads muddy/snowy — high clearance recommended</option>
+                                    <option value="closed">Roads closed/impassable</option>
+                                    <option value="unknown">Unknown</option>
                                 </select>
                             </div>
                             <div class="form-row">

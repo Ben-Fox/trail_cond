@@ -154,6 +154,27 @@ h2 .icon { color: var(--green); }
     display: flex; align-items: center; gap: 0.5rem;
 }
 
+/* Conditions-first result cards */
+.result-card.conditions-first { border-left: none; border-top: 4px solid var(--green); padding: 0.85rem 1rem; }
+.result-card.conditions-first h3 { font-size: var(--font-base); margin: 0.3rem 0 0.15rem; }
+.rc-condition-row {
+    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    margin-bottom: 0.35rem;
+}
+.rc-badge {
+    display: inline-block; padding: 0.3rem 0.75rem; border-radius: 6px;
+    font-weight: 700; font-size: var(--font-sm);
+}
+.rc-badge-green { background: var(--green-pale); color: var(--green); }
+.rc-badge-yellow { background: #fef3cd; color: #856404; }
+.rc-badge-red { background: #f8d7da; color: var(--red); }
+.rc-badge-unknown { background: #e9ecef; color: #6c757d; }
+.rc-badge-loading { background: #e9ecef; color: #6c757d; font-weight: 400; font-size: var(--font-xs); }
+.rc-temp { font-size: var(--font-lg); font-weight: 800; color: var(--green); }
+.rc-weather-label { font-size: var(--font-sm); color: var(--text-light); }
+.rc-reasons { font-size: var(--font-xs); color: var(--text-light); margin-top: 0.2rem; }
+.rc-status-row { margin-bottom: 0.2rem; }
+
 /* Badges */
 .badge {
     display: inline-flex; align-items: center; gap: 0.25rem;

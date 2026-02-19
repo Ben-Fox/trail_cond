@@ -14,12 +14,15 @@ async function loadReports(facilityId) {
         }
         container.innerHTML = reports.map(r => {
             const sc = {'open':'good','partially_open':'caution','closed':'bad'}[r.status]||'unknown';
+            const roadLabels = {clear_paved:'Roads clear',passable_rough:'Roads rough',muddy_snowy:'High clearance needed',closed:'Roads closed',unknown:'Roads unknown'};
+            const roadClass = {clear_paved:'good',passable_rough:'caution',muddy_snowy:'caution',closed:'bad'}[r.road_access]||'unknown';
             return `
                 <div class="report-item">
                     <div class="report-header">
                         <div class="report-badges">
                             <span class="badge badge-${sc}">${r.status.replace('_',' ')}</span>
                             ${r.trail_condition ? `<span class="badge badge-unknown">${r.trail_condition}</span>` : ''}
+                            ${r.road_access ? `<span class="badge badge-${roadClass}">🛣 ${roadLabels[r.road_access]||r.road_access}</span>` : ''}
                             ${r.trash_level ? `<span class="badge badge-unknown">${r.trash_level.replace('_',' ')}</span>` : ''}
                         </div>
                         <span class="report-date">${r.date_visited || new Date(r.created_at).toLocaleDateString()}</span>

@@ -23,6 +23,7 @@ def init_db():
             accessibility_notes TEXT DEFAULT '',
             general_notes TEXT DEFAULT '',
             date_visited TEXT DEFAULT '',
+            road_access TEXT DEFAULT '',
             photo_url TEXT DEFAULT '',
             upvotes INTEGER DEFAULT 0,
             downvotes INTEGER DEFAULT 0,
@@ -46,14 +47,15 @@ def add_report(facility_id, data):
     conn = get_db()
     cur = conn.execute('''
         INSERT INTO reports (facility_id, facility_name, status, trail_condition, trash_level,
-            accessibility_notes, general_notes, date_visited, photo_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            road_access, accessibility_notes, general_notes, date_visited, photo_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         facility_id,
         data.get('facility_name', ''),
         data.get('status', 'open'),
         data.get('trail_condition', ''),
         data.get('trash_level', ''),
+        data.get('road_access', ''),
         data.get('accessibility_notes', ''),
         data.get('general_notes', ''),
         data.get('date_visited', ''),
@@ -106,7 +108,7 @@ def vote_report(report_id, vote_type, ip_hash=''):
 def get_condition_summary(facility_id):
     conn = get_db()
     reports = conn.execute('''
-        SELECT status, trail_condition, trash_level, date_visited, created_at
+        SELECT status, trail_condition, trash_level, road_access, date_visited, created_at
         FROM reports WHERE facility_id = ? ORDER BY created_at DESC LIMIT 10
     ''', (facility_id,)).fetchall()
     conn.close()
@@ -120,6 +122,7 @@ def get_condition_summary(facility_id):
     statuses = [r['status'] for r in reports if r['status']]
     conditions = [r['trail_condition'] for r in reports if r['trail_condition']]
     trash = [r['trash_level'] for r in reports if r['trash_level']]
+    roads = [r['road_access'] for r in reports if r.get('road_access')]
     
     def most_common(lst):
         if not lst: return None
@@ -131,4 +134,5 @@ def get_condition_summary(facility_id):
         'status': most_common(statuses) or 'unknown',
         'trail_condition': most_common(conditions) or 'unknown',
         'trash_level': most_common(trash) or 'unknown',
+        'road_access': most_common(roads) or 'unknown',
     }

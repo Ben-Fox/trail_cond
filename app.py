@@ -57,6 +57,8 @@ def api_search():
             'phone': f.get('FacilityPhone'),
             'email': f.get('FacilityEmail'),
             'media': [m.get('URL') for m in f.get('MEDIA', [])[:1]],
+            'enabled': f.get('Enabled', True),
+            'reservation_url': f.get('FacilityReservationURL', ''),
         })
     
     return jsonify({
@@ -122,6 +124,139 @@ def api_vote(report_id):
     if result is False:
         return jsonify({'error': 'Already voted'}), 409
     return jsonify(result)
+
+@app.route('/api/weather/batch')
+def api_weather_batch():
+    """Batch weather + 7-day history for multiple lat/lon pairs."""
+    raw = request.args.get('locations', '')  # format: lat1,lon1|lat2,lon2|...
+    if not raw:
+        return jsonify({'error': 'locations param required (lat,lon|lat,lon|...)'}), 400
+    pairs = [p.split(',') for p in raw.split('|') if ',' in p]
+    if not pairs or len(pairs) > 50:
+        return jsonify({'error': 'Provide 1-50 locations'}), 400
+
+    lats = [p[0] for p in pairs]
+    lons = [p[1] for p in pairs]
+
+    try:
+        # Current weather
+        r_current = requests.get('https://api.open-meteo.com/v1/forecast', params={
+            'latitude': ','.join(lats),
+            'longitude': ','.join(lons),
+            'current_weather': 'true',
+            'temperature_unit': 'fahrenheit',
+            'windspeed_unit': 'mph',
+        }, timeout=10)
+        current_data = r_current.json()
+
+        # 7-day history
+        from datetime import datetime, timedelta
+        end = datetime.utcnow().date()
+        start = end - timedelta(days=7)
+        r_hist = requests.get('https://api.open-meteo.com/v1/forecast', params={
+            'latitude': ','.join(lats),
+            'longitude': ','.join(lons),
+            'daily': 'temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,rain_sum',
+            'temperature_unit': 'fahrenheit',
+            'precipitation_unit': 'inch',
+            'timezone': 'auto',
+            'start_date': start.isoformat(),
+            'end_date': end.isoformat(),
+        }, timeout=10)
+        hist_data = r_hist.json()
+
+        # Open-Meteo returns a list for multiple locations, single object for one
+        if len(pairs) == 1:
+            current_list = [current_data]
+            hist_list = [hist_data]
+        else:
+            current_list = current_data if isinstance(current_data, list) else [current_data]
+            hist_list = hist_data if isinstance(hist_data, list) else [hist_data]
+
+        results = []
+        for i, (lat, lon) in enumerate(pairs):
+            entry = {'lat': float(lat), 'lon': float(lon)}
+
+            # Current weather
+            if i < len(current_list) and 'current_weather' in current_list[i]:
+                entry['current'] = current_list[i]['current_weather']
+            else:
+                entry['current'] = None
+
+            # Inference from history
+            if i < len(hist_list):
+                daily = hist_list[i].get('daily', {})
+                entry['inference'] = _compute_inference(daily)
+            else:
+                entry['inference'] = None
+
+            results.append(entry)
+
+        return jsonify({'results': results})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _compute_inference(daily):
+    """Compute trail condition inference from 7-day weather history."""
+    temps_min = [t for t in (daily.get('temperature_2m_min') or []) if t is not None]
+    temps_max = [t for t in (daily.get('temperature_2m_max') or []) if t is not None]
+    snow_vals = [s for s in (daily.get('snowfall_sum') or []) if s is not None]
+    rain_vals = [r for r in (daily.get('rain_sum') or []) if r is not None]
+
+    total_snow = sum(snow_vals)
+    total_rain = sum(rain_vals)
+    avg_min = sum(temps_min) / len(temps_min) if temps_min else 40
+    avg_max = sum(temps_max) / len(temps_max) if temps_max else 60
+    any_freezing = any(t <= 32 for t in temps_min) if temps_min else False
+
+    reasons = []
+    level = 'green'
+
+    if total_snow > 2:
+        reasons.append(f'{total_snow:.1f}" snow (7d)')
+        level = 'red'
+    elif total_snow > 0.5:
+        reasons.append(f'{total_snow:.1f}" snow (7d)')
+        level = 'yellow'
+
+    if total_rain > 1.5:
+        reasons.append(f'{total_rain:.1f}" rain (7d)')
+        if level == 'green': level = 'yellow'
+    elif total_rain > 0.5:
+        reasons.append(f'{total_rain:.1f}" rain')
+
+    if any_freezing:
+        reasons.append(f'Freezing lows ({avg_min:.0f}°F)')
+        if level == 'green': level = 'yellow'
+
+    if total_snow > 2:
+        prediction = 'Likely snowy/icy'
+    elif total_snow > 0.5 and any_freezing:
+        prediction = 'Watch for ice'
+    elif total_rain > 1.5:
+        prediction = 'Likely muddy/wet'
+    elif total_rain > 0.5:
+        prediction = 'Some wet spots'
+    elif any_freezing and total_rain > 0:
+        prediction = 'Watch for ice'
+    elif avg_max > 50 and total_rain < 0.3 and total_snow < 0.1:
+        prediction = 'Likely dry & clear'
+        if not reasons: reasons.append(f'Dry, avg high {avg_max:.0f}°F')
+    else:
+        prediction = 'Moderate conditions'
+        if not reasons: reasons.append(f'Avg {avg_max:.0f}°/{avg_min:.0f}°F')
+
+    return {
+        'prediction': prediction,
+        'level': level,
+        'reasons': reasons,
+        'total_snow_inches': round(total_snow, 1),
+        'total_rain_inches': round(total_rain, 1),
+        'avg_high': round(avg_max),
+        'avg_low': round(avg_min),
+    }
+
 
 @app.route('/api/weather')
 def api_weather():
