@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Facility Details{% endblock %}
+{% block content %}
+<div class="facility-page" id="facility-page" data-id="{{ facility_id }}">
+    <div class="facility-loading">Loading facility details...</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/map.js"></script>
+<script src="/static/js/reports.js"></script>
+<script>
+const facilityId = '{{ facility_id }}';
+
+async function loadFacility() {
+    const page = document.getElementById('facility-page');
+    try {
+        const res = await fetch(`/api/facility/${facilityId}`);
+        const data = await res.json();
+        if (data.error) { page.innerHTML = `<p class="error">Error: ${data.error}</p>`; return; }
+        
+        const summary = data.condition_summary;
+        const statusClass = summary ? ({'open':'good','partially_open':'caution','closed':'bad'}[summary.status]||'unknown') : 'unknown';
+        const statusLabel = summary ? summary.status.replace('_',' ') : 'No reports yet';
+        
+        let mediaHtml = '';
+        if (data.media && data.media.length) {
+            mediaHtml = `<div class="facility-gallery">${data.media.slice(0,4).map(m=>`<img src="${m.url}" alt="${m.title}" loading="lazy">`).join('')}</div>`;
+        }
+        
+        page.innerHTML = `
+            <div class="facility-header">
+                <div>
+                    <h1>${data.name}</h1>
+                    <span class="badge badge-${statusClass}">${statusLabel}</span>
+                    ${data.ada === 'Yes' ? '<span class="badge badge-ada">♿ Accessible</span>' : ''}
+                    <p class="facility-type">${data.type || ''}</p>
+                </div>
+            </div>
+            ${mediaHtml}
+            <div class="facility-grid">
+                <div class="facility-main">
+                    <div class="card">
+                        <h2>📋 Description</h2>
+                        <div class="description">${data.description || 'No description available.'}</div>
+                    </div>
+                    ${data.directions ? `<div class="card"><h2>🧭 Directions</h2><p>${data.directions}</p></div>` : ''}
+                    ${data.activities && data.activities.length ? `<div class="card"><h2>🎯 Activities</h2><div class="tags">${data.activities.map(a=>`<span class="tag">${a}</span>`).join('')}</div></div>` : ''}
+                    ${data.ada_text ? `<div class="card"><h2>♿ Accessibility</h2><p>${data.ada_text}</p></div>` : ''}
+                    ${summary ? `<div class="card condition-card">
+                        <h2>📊 Condition Summary</h2>
+                        <p><strong>Based on ${summary.report_count} recent report(s)</strong></p>
+                        <div class="condition-grid">
+                            <div>Status: <span class="badge badge-${statusClass}">${statusLabel}</span></div>
+                            <div>Trail: <strong>${summary.trail_condition}</strong></div>
+                            <div>Trash: <strong>${summary.trash_level}</strong></div>
+                            <div>Last reported: ${new Date(summary.last_reported).toLocaleDateString()}</div>
+                        </div>
+                    </div>` : ''}
+                    <div class="card">
+                        <h2>📝 Submit a Condition Report</h2>
+                        <form id="report-form" onsubmit="submitReport(event)">
+                            <div class="form-row">
+                                <label>Status</label>
+                                <select name="status" required>
+                                    <option value="open">✅ Open</option>
+                                    <option value="partially_open">⚠️ Partially Open</option>
+                                    <option value="closed">🚫 Closed</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label>Trail Condition</label>
+                                <select name="trail_condition">
+                                    <option value="">-- Select --</option>
+                                    <option value="dry">Dry</option>
+                                    <option value="muddy">Muddy</option>
+                                    <option value="snowy">Snowy</option>
+                                    <option value="icy">Icy</option>
+                                    <option value="overgrown">Overgrown</option>
+                                    <option value="flooded">Flooded</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label>Trash Level</label>
+                                <select name="trash_level">
+                                    <option value="">-- Select --</option>
+                                    <option value="clean">🧹 Clean</option>
+                                    <option value="some_litter">Some Litter</option>
+                                    <option value="lots_of_trash">🗑️ Lots of Trash</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label>Accessibility Notes</label>
+                                <textarea name="accessibility_notes" rows="2" placeholder="Wheelchair access, trail width, etc."></textarea>
+                            </div>
+                            <div class="form-row">
+                                <label>General Notes</label>
+                                <textarea name="general_notes" rows="3" placeholder="What did you see? How was it?"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <label>Date Visited</label>
+                                <input type="date" name="date_visited">
+                            </div>
+                            <div class="form-row">
+                                <label>Photo URL (optional)</label>
+                                <input type="url" name="photo_url" placeholder="https://...">
+                            </div>
+                            <button type="submit" class="btn-primary">Submit Report</button>
+                        </form>
+                    </div>
+                    <div class="card">
+                        <h2>🗣️ Community Reports</h2>
+                        <div id="reports-list">Loading reports...</div>
+                    </div>
+                </div>
+                <div class="facility-sidebar">
+                    <div class="card">
+                        <h2>🗺️ Location</h2>
+                        <div id="detail-map" style="height:250px;border-radius:8px;"></div>
+                    </div>
+                    <div class="card">
+                        <h2>🌤️ Current Weather</h2>
+                        <div id="weather-widget">Loading...</div>
+                    </div>
+                    ${data.phone ? `<div class="card"><h2>📞 Contact</h2><p>${data.phone}</p>${data.email?`<p>${data.email}</p>`:''}</div>` : ''}
+                    ${data.reservation_url ? `<div class="card"><a href="${data.reservation_url}" target="_blank" class="btn-primary" style="display:block;text-align:center;">Make Reservation</a></div>` : ''}
+                </div>
+            </div>
+        `;
+        
+        // Init map
+        if (data.lat && data.lon) {
+            const map = initMap('detail-map', data.lat, data.lon, 12);
+            L.marker([data.lat, data.lon]).addTo(map).bindPopup(data.name);
+            loadWeather(data.lat, data.lon);
+        }
+        
+        loadReports(facilityId);
+    } catch(e) {
+        page.innerHTML = `<p class="error">Failed to load facility: ${e.message}</p>`;
+    }
+}
+
+async function loadWeather(lat, lon) {
+    try {
+        const res = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
+        const data = await res.json();
+        const w = data.current_weather;
+        if (!w) { document.getElementById('weather-widget').textContent = 'Unavailable'; return; }
+        const codes = {0:'☀️ Clear',1:'🌤️ Mostly Clear',2:'⛅ Partly Cloudy',3:'☁️ Overcast',45:'🌫️ Fog',51:'🌧️ Drizzle',61:'🌧️ Rain',71:'🌨️ Snow',95:'⛈️ Thunderstorm'};
+        const desc = codes[w.weathercode] || `Code ${w.weathercode}`;
+        document.getElementById('weather-widget').innerHTML = `
+            <div class="weather-info">
+                <div class="weather-temp">${Math.round(w.temperature)}°F</div>
+                <div>${desc}</div>
+                <div>Wind: ${Math.round(w.windspeed)} mph</div>
+            </div>
+        `;
+    } catch(e) {
+        document.getElementById('weather-widget').textContent = 'Unavailable';
+    }
+}
+
+loadFacility();
+</script>
+{% endblock %}

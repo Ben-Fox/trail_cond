@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Search{% endblock %}
+{% block content %}
+<section class="hero">
+    <h1>🥾 Find Trail & Campground Conditions</h1>
+    <p class="hero-sub">Real reports from real hikers. Like Waze, but for trails.</p>
+    <div class="search-box">
+        <input type="text" id="search-input" placeholder="Search trails, campgrounds, parks..." autofocus>
+        <select id="state-filter">
+            <option value="">All States</option>
+        </select>
+        <button id="search-btn" onclick="doSearch()">🔍 Search</button>
+    </div>
+    <div class="search-extras">
+        <button class="btn-outline" onclick="searchNearMe()">📍 Near Me</button>
+        <select id="activity-filter" onchange="doSearch()">
+            <option value="">All Activities</option>
+        </select>
+    </div>
+</section>
+<section class="results-section">
+    <div class="results-container">
+        <div class="results-list" id="results-list">
+            <p class="placeholder-text">Search for trails and campgrounds above ☝️</p>
+        </div>
+        <div class="map-container" id="map-container">
+            <div id="map"></div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/map.js"></script>
+<script src="/static/js/app.js"></script>
+{% endblock %}
