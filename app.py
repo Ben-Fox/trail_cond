@@ -15,6 +15,7 @@ def ridb_get(endpoint, params=None):
         r.raise_for_status()
         return r.json()
     except Exception as e:
+        print(f'[RIDB ERROR] {endpoint}: {e}', flush=True)
         return {'error': str(e)}
 
 @app.route('/')
@@ -68,8 +69,10 @@ def api_search():
 
 @app.route('/api/facility/<facility_id>')
 def api_facility(facility_id):
+    print(f'[FACILITY] Loading facility_id={facility_id!r}', flush=True)
     data = ridb_get(f'/facilities/{facility_id}')
     if 'error' in data:
+        print(f'[FACILITY ERROR] {facility_id}: {data["error"]}', flush=True)
         return jsonify(data), 500
     
     # Also get activities
