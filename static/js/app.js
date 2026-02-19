@@ -93,7 +93,7 @@ function renderResults(results, total) {
         results.map(r => {
             const openStatus = r.enabled === false ? 'closed' : 'open';
             const openClass = openStatus === 'closed' ? 'badge-bad' : 'badge-good';
-            const openLabel = openStatus === 'closed' ? 'Closed' : 'Open';
+            const openLabel = openStatus === 'closed' ? 'Facility Closed' : 'Facility Open';
             return `
             <div class="result-card conditions-first" onclick="window.location='/facility/${r.id}'" data-facility-id="${r.id}">
                 <div class="rc-condition-row" id="weather-${r.id}">

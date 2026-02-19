@@ -37,7 +37,8 @@ const statusIcons = { 'open': SVG.checkCircle, 'partially_open': SVG.alertTriang
 async function loadFacility() {
     const page = document.getElementById('facility-page');
     try {
-        const res = await fetch(`/api/facility/${facilityId}`);
+        const res = await fetch(`/api/facility/${encodeURIComponent(facilityId)}`);
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
         const data = await res.json();
         if (data.error) { page.innerHTML = `<p class="error">Error: ${data.error}</p>`; return; }
         
