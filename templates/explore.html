@@ -35,6 +35,11 @@
         </div>
         <div id="mapView" class="map-view">
             <div id="map" class="explore-map-full"></div>
+            <div id="mapControls" class="map-controls">
+                <label class="map-toggle"><input type="checkbox" id="weatherOverlayToggle"> Weather Radar</label>
+                <label class="map-toggle"><input type="checkbox" id="precipOverlayToggle"> Precipitation</label>
+                <label class="map-toggle"><input type="checkbox" id="trailOverlayToggle"> Trail Routes</label>
+            </div>
             <button id="searchMapBtn" class="btn-search-map" style="display:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
                 Search This Area
@@ -78,6 +83,46 @@ function initMap() {
     });
     map.addLayer(markerCluster);
     map.on('zoomend', onZoomChange);
+    
+    // Weather overlays
+    let radarLayer = null;
+    let precipLayer = null;
+    const trailsOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.6, attribution:'Waymarked Trails'});
+    
+    // Fetch RainViewer radar timestamp
+    fetch('https://api.rainviewer.com/public/weather-maps.json')
+        .then(r => r.json())
+        .then(data => {
+            const latest = data.radar?.past?.slice(-1)?.[0];
+            if (latest) {
+                radarLayer = L.tileLayer(`https://tilecache.rainviewer.com${latest.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+                    opacity: 0.4,
+                    attribution: 'RainViewer'
+                });
+            }
+            // Satellite/infrared for cloud/precip visualization
+            const satLatest = data.satellite?.infrared?.slice(-1)?.[0];
+            if (satLatest) {
+                precipLayer = L.tileLayer(`https://tilecache.rainviewer.com${satLatest.path}/256/{z}/{x}/{y}/0/0_0.png`, {
+                    opacity: 0.3,
+                    attribution: 'RainViewer'
+                });
+            }
+        })
+        .catch(() => {});
+    
+    document.getElementById('weatherOverlayToggle').addEventListener('change', function() {
+        if (this.checked && radarLayer) radarLayer.addTo(map);
+        else if (radarLayer && map.hasLayer(radarLayer)) map.removeLayer(radarLayer);
+    });
+    document.getElementById('precipOverlayToggle').addEventListener('change', function() {
+        if (this.checked && precipLayer) precipLayer.addTo(map);
+        else if (precipLayer && map.hasLayer(precipLayer)) map.removeLayer(precipLayer);
+    });
+    document.getElementById('trailOverlayToggle').addEventListener('change', function() {
+        if (this.checked) trailsOverlay.addTo(map);
+        else if (map.hasLayer(trailsOverlay)) map.removeLayer(trailsOverlay);
+    });
 }
 
 function clearMarkers() {
