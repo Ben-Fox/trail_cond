@@ -34,9 +34,15 @@
             <span id="resultCount" class="result-count"></span>
         </div>
         <div id="mapOverlayControls" class="map-overlay-controls">
-            <label class="map-toggle"><input type="checkbox" id="weatherOverlayToggle"> Weather Radar</label>
-            <label class="map-toggle"><input type="checkbox" id="precipOverlayToggle"> Precipitation</label>
+            <label class="map-toggle"><input type="checkbox" id="conditionsOverlayToggle"> Projected Trail Conditions</label>
             <label class="map-toggle"><input type="checkbox" id="trailOverlayToggle"> Trail Routes</label>
+            <div id="conditionsLegend" class="conditions-legend" style="display:none;">
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(45,106,79,0.3)"></span>Dry</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(176,137,104,0.5)"></span>Wet</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(127,85,57,0.6)"></span>Muddy</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(74,144,217,0.6)"></span>Snowy</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(196,69,54,0.6)"></span>Icy</span>
+            </div>
         </div>
         <div id="mapView" class="map-view">
             <div id="map" class="explore-map-full"></div>
@@ -84,41 +90,121 @@ function initMap() {
     map.addLayer(markerCluster);
     map.on('zoomend', onZoomChange);
     
-    // Weather overlays
-    let radarLayer = null;
-    let precipLayer = null;
+    // Overlays
     const trailsOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.6, attribution:'Waymarked Trails'});
+    let conditionsLayer = L.layerGroup();
+    let conditionsActive = false;
+    let conditionsCache = {};
+    let conditionsLoading = false;
     
-    // Fetch RainViewer radar timestamp
-    fetch('https://api.rainviewer.com/public/weather-maps.json')
-        .then(r => r.json())
-        .then(data => {
-            const latest = data.radar?.past?.slice(-1)?.[0];
-            if (latest) {
-                radarLayer = L.tileLayer(`https://tilecache.rainviewer.com${latest.path}/256/{z}/{x}/{y}/2/1_1.png`, {
-                    opacity: 0.4,
-                    attribution: 'RainViewer'
+    const CONDITION_COLORS = {
+        'snowy': 'rgba(74, 144, 217, 0.3)',
+        'icy': 'rgba(196, 69, 54, 0.3)',
+        'muddy': 'rgba(127, 85, 57, 0.3)',
+        'wet': 'rgba(176, 137, 104, 0.25)',
+        'dry': 'rgba(45, 106, 79, 0.15)',
+        'clear': 'rgba(45, 106, 79, 0.1)',
+    };
+    const CONDITION_BORDERS = {
+        'snowy': 'rgba(74, 144, 217, 0.5)',
+        'icy': 'rgba(196, 69, 54, 0.5)',
+        'muddy': 'rgba(127, 85, 57, 0.4)',
+        'wet': 'rgba(176, 137, 104, 0.35)',
+        'dry': 'rgba(45, 106, 79, 0.2)',
+        'clear': 'rgba(45, 106, 79, 0.15)',
+    };
+    
+    async function loadConditionsGrid() {
+        if (!conditionsActive || conditionsLoading) return;
+        const zoom = map.getZoom();
+        if (zoom < 6) { conditionsLayer.clearLayers(); return; }
+        
+        conditionsLoading = true;
+        const bounds = map.getBounds();
+        const s = bounds.getSouth(), n = bounds.getNorth();
+        const w = bounds.getWest(), e = bounds.getEast();
+        
+        // Grid size adapts to zoom: fewer cells when zoomed out, more when zoomed in
+        const cols = Math.min(6, Math.max(3, zoom - 4));
+        const rows = Math.min(5, Math.max(2, zoom - 5));
+        const latStep = (n - s) / rows;
+        const lonStep = (e - w) / cols;
+        
+        const points = [];
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const lat = s + latStep * (r + 0.5);
+                const lon = w + lonStep * (c + 0.5);
+                const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+                points.push({lat, lon, r, c, key,
+                    south: s + latStep * r, north: s + latStep * (r + 1),
+                    west: w + lonStep * c, east: w + lonStep * (c + 1)
                 });
             }
-            // Satellite/infrared for cloud/precip visualization
-            const satLatest = data.satellite?.infrared?.slice(-1)?.[0];
-            if (satLatest) {
-                precipLayer = L.tileLayer(`https://tilecache.rainviewer.com${satLatest.path}/256/{z}/{x}/{y}/0/0_0.png`, {
-                    opacity: 0.3,
-                    attribution: 'RainViewer'
-                });
-            }
-        })
-        .catch(() => {});
+        }
+        
+        // Fetch weather for uncached points
+        const uncached = points.filter(p => !conditionsCache[p.key]);
+        if (uncached.length > 0) {
+            try {
+                // Fetch in parallel batches of 5
+                const batches = [];
+                for (let i = 0; i < uncached.length; i += 5) {
+                    batches.push(uncached.slice(i, i + 5));
+                }
+                for (const batch of batches) {
+                    const fetches = batch.map(p =>
+                        fetch(`/api/weather/history?lat=${p.lat.toFixed(4)}&lon=${p.lon.toFixed(4)}`)
+                            .then(r => r.json())
+                            .then(data => { conditionsCache[p.key] = data.inference || {condition: 'clear'}; })
+                            .catch(() => { conditionsCache[p.key] = {condition: 'clear'}; })
+                    );
+                    await Promise.all(fetches);
+                }
+            } catch(e) {}
+        }
+        
+        // Draw polygons
+        conditionsLayer.clearLayers();
+        for (const p of points) {
+            const inf = conditionsCache[p.key];
+            if (!inf) continue;
+            const cond = inf.condition || 'clear';
+            const rect = L.rectangle(
+                [[p.south, p.west], [p.north, p.east]],
+                {
+                    fillColor: CONDITION_COLORS[cond] || CONDITION_COLORS['clear'],
+                    fillOpacity: 1,
+                    color: CONDITION_BORDERS[cond] || CONDITION_BORDERS['clear'],
+                    weight: 1,
+                    opacity: 0.6,
+                }
+            );
+            const label = cond.charAt(0).toUpperCase() + cond.slice(1);
+            const reasons = (inf.reasons || []).join('; ');
+            rect.bindPopup(`<strong>${label}</strong><br><small>${reasons}</small>`, {closeButton: false});
+            rect.on('mouseover', function() { this.openPopup(); });
+            rect.on('mouseout', function() { this.closePopup(); });
+            conditionsLayer.addLayer(rect);
+        }
+        conditionsLoading = false;
+    }
     
-    document.getElementById('weatherOverlayToggle').addEventListener('change', function() {
-        if (this.checked && radarLayer) radarLayer.addTo(map);
-        else if (radarLayer && map.hasLayer(radarLayer)) map.removeLayer(radarLayer);
+    document.getElementById('conditionsOverlayToggle').addEventListener('change', function() {
+        conditionsActive = this.checked;
+        document.getElementById('conditionsLegend').style.display = this.checked ? 'flex' : 'none';
+        if (this.checked) {
+            conditionsLayer.addTo(map);
+            loadConditionsGrid();
+        } else {
+            map.removeLayer(conditionsLayer);
+        }
     });
-    document.getElementById('precipOverlayToggle').addEventListener('change', function() {
-        if (this.checked && precipLayer) precipLayer.addTo(map);
-        else if (precipLayer && map.hasLayer(precipLayer)) map.removeLayer(precipLayer);
+    
+    map.on('moveend', function() {
+        if (conditionsActive) loadConditionsGrid();
     });
+    
     document.getElementById('trailOverlayToggle').addEventListener('change', function() {
         if (this.checked) trailsOverlay.addTo(map);
         else if (map.hasLayer(trailsOverlay)) map.removeLayer(trailsOverlay);
