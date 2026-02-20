@@ -123,7 +123,7 @@ async function fetchAutocomplete(q) {
                 ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l4-8 4 6 4-10 6 12"/></svg>'
                 : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>';
             const label = item.type === 'trail' ? 'Trail' : 'Area';
-            return `<div class="ac-item" data-type="${item.type}" data-osm-type="${item.osm_type}" data-osm-id="${item.osm_id}" data-name="${item.name}">
+            return `<div class="ac-item" data-type="${item.type}" data-osm-type="${item.osm_type || ''}" data-osm-id="${item.osm_id || ''}" data-name="${item.name}" data-lat="${item.lat || ''}" data-lon="${item.lon || ''}">
                 <span class="ac-icon">${icon}</span>
                 <div class="ac-text">
                     <span class="ac-name">${item.name}</span>
@@ -137,10 +137,12 @@ async function fetchAutocomplete(q) {
         acDropdown.querySelectorAll('.ac-item').forEach(el => {
             el.addEventListener('click', () => {
                 acDropdown.style.display = 'none';
-                if (el.dataset.type === 'trail') {
-                    const osmType = el.dataset.osmType === 'way' ? 'way' : 'relation';
-                    window.location = `/trail/${osmType}/${el.dataset.osmId}`;
+                const osmType = el.dataset.osmType;
+                const osmId = el.dataset.osmId;
+                if (el.dataset.type === 'trail' && (osmType === 'way' || osmType === 'relation') && osmId) {
+                    window.location = `/trail/${osmType}/${osmId}`;
                 } else {
+                    // Area or unresolvable trail — search using the name
                     searchInput.value = el.dataset.name;
                     doSearch();
                 }
