@@ -96,6 +96,8 @@ function initMap() {
     let conditionsCache = {};
     let conditionsLoading = false;
     let canvasOverlay = null;
+    let lastGrid = null;
+    let lastGridBounds = null;
     
     // Condition severity for interpolation (0=dry, 1=wet, 2=muddy, 3=snowy, 4=icy)
     const COND_SCORE = {clear: 0, dry: 0, wet: 1, muddy: 2, snowy: 3, icy: 4};
@@ -153,19 +155,22 @@ function initMap() {
             }
         }
         
-        // Fetch weather for uncached points
+        // Fetch weather for uncached points via batch endpoint
         const allPts = grid.flat();
         const uncached = allPts.filter(p => !conditionsCache[p.key]);
         if (uncached.length > 0) {
-            const batches = [];
-            for (let i = 0; i < uncached.length; i += 6) batches.push(uncached.slice(i, i + 6));
-            for (const batch of batches) {
-                await Promise.all(batch.map(p =>
-                    fetch(`/api/weather/history?lat=${p.lat.toFixed(4)}&lon=${p.lon.toFixed(4)}`)
-                        .then(r => r.json())
-                        .then(data => { conditionsCache[p.key] = data.inference || {condition: 'clear', reasons: []}; })
-                        .catch(() => { conditionsCache[p.key] = {condition: 'clear', reasons: []}; })
-                ));
+            try {
+                const lats = uncached.map(p => p.lat.toFixed(4)).join(',');
+                const lons = uncached.map(p => p.lon.toFixed(4)).join(',');
+                const res = await fetch(`/api/weather/grid?lats=${lats}&lons=${lons}`);
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    for (let i = 0; i < uncached.length; i++) {
+                        conditionsCache[uncached[i].key] = data[i] || {condition: 'clear', reasons: []};
+                    }
+                }
+            } catch(e) {
+                for (const p of uncached) conditionsCache[p.key] = {condition: 'clear', reasons: []};
             }
         }
         
@@ -229,6 +234,8 @@ function initMap() {
         canvasOverlay = L.imageOverlay(imgUrl, [[ps, pw], [pn, pe]], {opacity: 0.55, interactive: false});
         canvasOverlay.addTo(map);
         
+        lastGrid = grid;
+        lastGridBounds = {s: ps, n: pn, w: pw, e: pe, rows: gridRows, cols: gridCols};
         conditionsLoading = false;
     }
     
@@ -244,6 +251,31 @@ function initMap() {
     
     map.on('moveend', function() {
         if (conditionsActive) loadConditionsGrid();
+    });
+    
+    // Click on map to see conditions at that point
+    map.on('click', function(e) {
+        if (!conditionsActive || !lastGrid || !lastGridBounds) return;
+        const gb = lastGridBounds;
+        const lat = e.latlng.lat, lon = e.latlng.lng;
+        if (lat < gb.s || lat > gb.n || lon < gb.w || lon > gb.e) return;
+        
+        // Find nearest grid cell
+        const gr = ((lat - gb.s) / (gb.n - gb.s)) * (gb.rows - 1);
+        const gc = ((lon - gb.w) / (gb.e - gb.w)) * (gb.cols - 1);
+        const r = Math.round(Math.max(0, Math.min(gb.rows - 1, gr)));
+        const c = Math.round(Math.max(0, Math.min(gb.cols - 1, gc)));
+        const cell = lastGrid[r] && lastGrid[r][c];
+        if (!cell) return;
+        const inf = conditionsCache[cell.key];
+        if (!inf) return;
+        
+        const label = (inf.condition || 'clear').charAt(0).toUpperCase() + (inf.condition || 'clear').slice(1);
+        const reasons = (inf.reasons || []).join('<br>');
+        L.popup()
+            .setLatLng(e.latlng)
+            .setContent(`<strong style="font-size:1.1em">${label}</strong><br><small style="color:#555">${reasons}</small>`)
+            .openOn(map);
     });
     
     document.getElementById('trailOverlayToggle').addEventListener('change', function() {

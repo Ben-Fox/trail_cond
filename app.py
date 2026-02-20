@@ -437,6 +437,98 @@ def api_elevation():
 _weather_cache = {}
 WEATHER_CACHE_TTL = 900  # 15 minutes
 
+@app.route('/api/weather/grid')
+def api_weather_grid():
+    """Batch weather inference for multiple lat/lon points. Expects lats=a,b,c&lons=a,b,c"""
+    lats = request.args.get('lats', '')
+    lons = request.args.get('lons', '')
+    if not lats or not lons:
+        return jsonify({'error': 'Missing lats/lons'}), 400
+    
+    lat_list = lats.split(',')
+    lon_list = lons.split(',')
+    if len(lat_list) != len(lon_list):
+        return jsonify({'error': 'Mismatched lats/lons'}), 400
+    
+    now = time.time()
+    results = []
+    uncached_indices = []
+    
+    # Check cache first
+    for i in range(len(lat_list)):
+        key = f"grid:{float(lat_list[i]):.2f},{float(lon_list[i]):.2f}"
+        if key in _weather_cache and now - _weather_cache[key][0] < WEATHER_CACHE_TTL:
+            results.append(_weather_cache[key][1])
+        else:
+            results.append(None)
+            uncached_indices.append(i)
+    
+    # Fetch uncached in parallel using Open-Meteo multi-location
+    if uncached_indices:
+        # Open-Meteo supports comma-separated coords for batch
+        batch_lats = ','.join(lat_list[i] for i in uncached_indices)
+        batch_lons = ','.join(lon_list[i] for i in uncached_indices)
+        try:
+            r = requests.get('https://api.open-meteo.com/v1/forecast', params={
+                'latitude': batch_lats,
+                'longitude': batch_lons,
+                'daily': 'temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,rain_sum',
+                'past_days': 7,
+                'forecast_days': 1,
+                'timezone': 'auto'
+            }, timeout=15)
+            data = r.json()
+            
+            # Multi returns list, single returns dict
+            if not isinstance(data, list):
+                data = [data]
+            
+            for j, d in enumerate(data):
+                idx = uncached_indices[j]
+                daily = d.get('daily', {})
+                total_snow = sum(v for v in (daily.get('snowfall_sum') or []) if v)
+                total_rain = sum(v for v in (daily.get('rain_sum') or []) if v)
+                total_precip = sum(v for v in (daily.get('precipitation_sum') or []) if v)
+                min_temps = [v for v in (daily.get('temperature_2m_min') or []) if v is not None]
+                avg_min = sum(min_temps) / len(min_temps) if min_temps else 0
+                
+                reasons = []
+                condition = 'clear'
+                if total_snow > 5:
+                    condition = 'snowy'
+                    reasons.append(f'{total_snow:.1f}cm snow in 7 days')
+                elif total_snow > 0.5:
+                    if avg_min < 0:
+                        condition = 'icy'
+                        reasons.append(f'{total_snow:.1f}cm snow + freezing temps')
+                    else:
+                        condition = 'snowy'
+                        reasons.append(f'{total_snow:.1f}cm snow in 7 days')
+                if total_rain > 20:
+                    if condition == 'clear':
+                        condition = 'muddy'
+                    reasons.append(f'{total_rain:.1f}mm rain — expect mud')
+                elif total_rain > 5:
+                    if condition == 'clear':
+                        condition = 'wet'
+                    reasons.append(f'{total_rain:.1f}mm rain in 7 days')
+                if condition == 'clear' and total_precip < 2:
+                    condition = 'dry'
+                    reasons.append('Minimal precipitation — trails likely dry')
+                if not reasons:
+                    reasons.append('Conditions look good')
+                
+                inf = {'condition': condition, 'reasons': reasons}
+                results[idx] = inf
+                key = f"grid:{float(lat_list[idx]):.2f},{float(lon_list[idx]):.2f}"
+                _weather_cache[key] = (now, inf)
+        except Exception:
+            for j in uncached_indices:
+                if results[j] is None:
+                    results[j] = {'condition': 'clear', 'reasons': ['Unable to fetch weather']}
+    
+    return jsonify(results)
+
 @app.route('/api/weather/batch')
 def api_weather_batch():
     locations = request.args.get('locations', '')
