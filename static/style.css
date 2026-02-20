@@ -194,15 +194,31 @@ body {
 }
 .condition-reasons { margin-bottom: 20px; }
 .reason { color: var(--text); font-size: .95rem; padding: 4px 0; padding-left: 16px; border-left: 3px solid var(--brown-light); margin-bottom: 6px; }
-.history-grid { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+.weather-history h3 { font-size: 1rem; margin-bottom: 0.5rem; }
+.history-grid {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 10px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--brown-light) transparent;
+}
+.history-grid::-webkit-scrollbar { height: 6px; }
+.history-grid::-webkit-scrollbar-track { background: transparent; }
+.history-grid::-webkit-scrollbar-thumb { background: var(--brown-light); border-radius: 3px; }
 .history-day {
     background: white;
-    border-radius: 8px;
-    padding: 12px;
-    min-width: 80px;
+    border-radius: 10px;
+    padding: 14px 16px;
+    min-width: 90px;
+    flex-shrink: 0;
     text-align: center;
     box-shadow: 0 1px 4px rgba(0,0,0,.06);
     font-size: .85rem;
+    scroll-snap-align: start;
+    border: 1px solid rgba(0,0,0,0.05);
 }
 .hd-date { font-weight: 700; color: var(--green); margin-bottom: 4px; }
 .hd-temp { font-weight: 600; }
