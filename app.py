@@ -31,7 +31,7 @@ def api_search():
     lon = request.args.get('lon', '')
     limit = request.args.get('limit', '20')
     
-    params = {'apikey': RIDB_KEY, 'limit': limit, 'offset': 0}
+    params = {'apikey': RIDB_KEY, 'limit': 50, 'offset': 0, 'activity': 'HIKING'}
     if q:
         params['query'] = q
     if state:
@@ -42,12 +42,25 @@ def api_search():
         params['radius'] = 50
     
     try:
+        # Search with hiking activity filter
         r = requests.get(f'{RIDB_BASE}/facilities', params=params, timeout=10)
         data = r.json()
         facilities = data.get('RECDATA', [])
-        trails = [f for f in facilities if f.get('FacilityTypeDescription', '').upper() in TRAIL_TYPES
-                  or 'trail' in f.get('FacilityName', '').lower()
-                  or 'HIKING' in str(f.get('ACTIVITY', '')).upper()]
+        
+        # Also do a broader search without activity filter to catch trailheads
+        params2 = {k: v for k, v in params.items() if k != 'activity'}
+        params2['limit'] = 50
+        r2 = requests.get(f'{RIDB_BASE}/facilities', params=params2, timeout=10)
+        data2 = r2.json()
+        seen_ids = {f.get('FacilityID') for f in facilities}
+        for f in data2.get('RECDATA', []):
+            if f.get('FacilityID') not in seen_ids:
+                if (f.get('FacilityTypeDescription', '').upper() in TRAIL_TYPES
+                    or 'trail' in f.get('FacilityName', '').lower()
+                    or 'hik' in f.get('FacilityName', '').lower()):
+                    facilities.append(f)
+        
+        trails = facilities
         results = []
         for f in trails:
             results.append({
