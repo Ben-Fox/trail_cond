@@ -2,9 +2,8 @@ from flask import Flask, render_template, request, jsonify
 import requests
 import hashlib
 import time
+from math import radians, sin, cos, sqrt, atan2
 from database import get_db, init_db
-from datetime import datetime, timedelta
-from functools import lru_cache
 
 app = Flask(__name__)
 RIDB_KEY = 'b4cf5317-0be1-4127-97de-5bed2d3b0b68'
@@ -73,6 +72,13 @@ def overpass_query(query):
     global _last_overpass_request
     cache_key = hashlib.md5(query.encode()).hexdigest()
     now = time.time()
+    
+    # Prune stale cache entries periodically
+    if len(_overpass_cache) > 100:
+        stale = [k for k, (ts, _) in _overpass_cache.items() if now - ts > CACHE_TTL]
+        for k in stale:
+            del _overpass_cache[k]
+    
     if cache_key in _overpass_cache:
         ts, data = _overpass_cache[cache_key]
         if now - ts < CACHE_TTL:
@@ -169,13 +175,13 @@ AUTOCOMPLETE_TTL = 300  # 5 minutes
 @app.route('/api/autocomplete')
 def api_autocomplete():
     q = request.args.get('q', '').strip()
-    if len(q) < 3:
+    if len(q) < 2:
         return jsonify([])
     
-    cache_key = q.lower()
+    ac_key = q.lower()
     now = time.time()
-    if cache_key in _autocomplete_cache:
-        ts, data = _autocomplete_cache[cache_key]
+    if ac_key in _autocomplete_cache:
+        ts, data = _autocomplete_cache[ac_key]
         if now - ts < AUTOCOMPLETE_TTL:
             return jsonify(data)
     
@@ -191,10 +197,9 @@ def api_autocomplete():
             parts = display.split(',')
             name = parts[0].strip()
             context = ', '.join(p.strip() for p in parts[1:3]) if len(parts) > 1 else ''
-            # Check if it looks like a trail/path
             cls = place.get('class', '')
             typ = place.get('type', '')
-            item_type = 'trail' if cls in ('highway',) and typ in ('path', 'footway', 'track') else 'area'
+            item_type = 'trail' if cls == 'highway' and typ in ('path', 'footway', 'track') else 'area'
             results.append({
                 'type': item_type,
                 'name': name,
@@ -204,14 +209,14 @@ def api_autocomplete():
                 'lat': place.get('lat'),
                 'lon': place.get('lon'),
             })
-    except:
+    except Exception:
         pass
     
     # 2. Also check cached Overpass results for matching trail names
-    for cache_key, (ts, data) in list(_overpass_cache.items()):
+    for ck, (ts, cdata) in list(_overpass_cache.items()):
         if now - ts > CACHE_TTL:
             continue
-        for el in data.get('elements', []):
+        for el in cdata.get('elements', []):
             tags = el.get('tags', {})
             name = tags.get('name', '')
             if name and q.lower() in name.lower():
@@ -227,7 +232,7 @@ def api_autocomplete():
                         'osm_id': osm_id,
                     })
     
-    _autocomplete_cache[cache_key] = (now, results)
+    _autocomplete_cache[ac_key] = (now, results)
     return jsonify(results)
 
 @app.route('/api/search')
@@ -294,7 +299,7 @@ out center tags 50;'''
 out center tags 100;'''
                 try:
                     results = parse_osm_trails(overpass_query(bbox_query))
-                except:
+                except Exception:
                     pass
             elif geo:
                 # No bbox, use around search
@@ -306,7 +311,7 @@ out center tags 100;'''
 out center tags 100;'''
                 try:
                     results = parse_osm_trails(overpass_query(around_query))
-                except:
+                except Exception:
                     pass
             
             # Also search hiking relations by name globally (fast)
@@ -319,7 +324,7 @@ out center tags 20;'''
                 for r in name_results:
                     if r['id'] not in seen_ids:
                         results.append(r)
-            except:
+            except Exception:
                 pass
             
             return jsonify(results[:100])
@@ -368,7 +373,6 @@ out geom tags;'''
         # Calculate approximate distance in km from geometry
         distance_km = None
         if len(geometry) > 1:
-            from math import radians, sin, cos, sqrt, atan2
             total = 0
             for i in range(len(geometry) - 1):
                 lat1, lon1 = radians(geometry[i]['lat']), radians(geometry[i]['lon'])
@@ -430,23 +434,56 @@ def api_elevation():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+_weather_cache = {}
+WEATHER_CACHE_TTL = 900  # 15 minutes
+
 @app.route('/api/weather/batch')
 def api_weather_batch():
     locations = request.args.get('locations', '')
     if not locations:
         return jsonify([])
     pairs = [l.split(',') for l in locations.split('|') if ',' in l]
+    now = time.time()
     results = []
+    # Open-Meteo supports comma-separated lat/lon for multi-location
+    uncached = []
     for lat, lon in pairs[:20]:
+        key = f"{float(lat):.2f},{float(lon):.2f}"
+        if key in _weather_cache and now - _weather_cache[key][0] < WEATHER_CACHE_TTL:
+            results.append(_weather_cache[key][1])
+        else:
+            uncached.append((lat, lon, len(results)))
+            results.append(None)
+    
+    if uncached:
         try:
+            lats = ','.join(u[0] for u in uncached)
+            lons = ','.join(u[1] for u in uncached)
             r = requests.get('https://api.open-meteo.com/v1/forecast', params={
-                'latitude': lat, 'longitude': lon,
+                'latitude': lats, 'longitude': lons,
                 'current_weather': 'true'
-            }, timeout=8)
-            w = r.json().get('current_weather', {})
-            results.append({'lat': float(lat), 'lon': float(lon), 'temp_c': w.get('temperature'), 'windspeed': w.get('windspeed'), 'weathercode': w.get('weathercode')})
-        except:
-            results.append({'lat': float(lat), 'lon': float(lon), 'error': True})
+            }, timeout=10)
+            data = r.json()
+            # Multi-location returns list, single returns dict
+            if isinstance(data, list):
+                for i, d in enumerate(data):
+                    w = d.get('current_weather', {})
+                    result = {'lat': float(uncached[i][0]), 'lon': float(uncached[i][1]), 'temp_c': w.get('temperature'), 'windspeed': w.get('windspeed'), 'weathercode': w.get('weathercode')}
+                    results[uncached[i][2]] = result
+                    key = f"{float(uncached[i][0]):.2f},{float(uncached[i][1]):.2f}"
+                    _weather_cache[key] = (now, result)
+            else:
+                w = data.get('current_weather', {})
+                result = {'lat': float(uncached[0][0]), 'lon': float(uncached[0][1]), 'temp_c': w.get('temperature'), 'windspeed': w.get('windspeed'), 'weathercode': w.get('weathercode')}
+                results[uncached[0][2]] = result
+                key = f"{float(uncached[0][0]):.2f},{float(uncached[0][1]):.2f}"
+                _weather_cache[key] = (now, result)
+        except Exception:
+            for u in uncached:
+                if results[u[2]] is None:
+                    results[u[2]] = {'lat': float(u[0]), 'lon': float(u[1]), 'error': True}
+    
+    results = [r for r in results if r is not None]
     return jsonify(results)
 
 @app.route('/api/weather/history')

@@ -32,5 +32,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(report_id, ip_hash)
         );
+        CREATE INDEX IF NOT EXISTS idx_reports_facility ON reports(facility_id);
+        CREATE INDEX IF NOT EXISTS idx_votes_report ON votes(report_id);
     ''')
     conn.close()
