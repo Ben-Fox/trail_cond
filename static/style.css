@@ -123,7 +123,7 @@ body {
     font-size: .95rem;
     background: white;
 }
-.search-bar input { flex: 1; min-width: 200px; }
+.search-bar input { min-width: 200px; }
 .search-bar select { min-width: 100px; }
 .explore-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding-bottom: 40px; }
 .explore-map { height: 500px; border-radius: var(--radius); overflow: hidden; }
@@ -263,6 +263,75 @@ body {
     font-family: 'Nunito', sans-serif;
     font-size: .95rem;
 }
+
+/* Search input wrapper for autocomplete */
+.search-input-wrap { position: relative; flex: 1; min-width: 200px; }
+.search-input-wrap input { width: 100%; }
+
+/* Autocomplete dropdown */
+.ac-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #d0c9be;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    z-index: 500;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.ac-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background .15s;
+}
+.ac-item:hover { background: var(--sand); }
+.ac-icon { color: var(--brown-light); flex-shrink: 0; }
+.ac-text { flex: 1; min-width: 0; }
+.ac-name { display: block; font-weight: 600; font-size: .95rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-context { display: block; font-size: .8rem; color: var(--text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; flex-shrink: 0; }
+.ac-label-trail { background: var(--green); color: white; }
+.ac-label-area { background: var(--brown-light); color: white; }
+
+/* View toggle */
+.view-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: 1px solid #d0c9be;
+    border-radius: 8px;
+    background: white;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--text-light);
+    cursor: pointer;
+    transition: all .2s;
+}
+.toggle-btn:hover { border-color: var(--brown-light); color: var(--brown); }
+.toggle-btn.active { background: var(--green); color: white; border-color: var(--green); }
+.toggle-btn.active svg { stroke: white; }
+
+/* Full-width map view */
+.explore-map-full { height: 500px; border-radius: var(--radius); overflow: hidden; }
+.map-view { margin-bottom: 20px; }
+.list-view .results-list { max-height: none; }
+.placeholder-msg { padding: 2rem 0; }
 
 /* Responsive */
 @media (max-width: 768px) {

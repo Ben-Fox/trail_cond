@@ -136,6 +136,73 @@ def trail_detail_legacy(facility_id):
     return render_template('trail.html', osm_type='legacy', osm_id=facility_id)
 
 # --- API ---
+_autocomplete_cache = {}
+AUTOCOMPLETE_TTL = 300  # 5 minutes
+
+@app.route('/api/autocomplete')
+def api_autocomplete():
+    q = request.args.get('q', '').strip()
+    if len(q) < 3:
+        return jsonify([])
+    
+    cache_key = q.lower()
+    now = time.time()
+    if cache_key in _autocomplete_cache:
+        ts, data = _autocomplete_cache[cache_key]
+        if now - ts < AUTOCOMPLETE_TTL:
+            return jsonify(data)
+    
+    results = []
+    
+    # 1. Query Nominatim for place suggestions (fast)
+    try:
+        r = requests.get(NOMINATIM_URL, params={
+            'q': q, 'format': 'json', 'limit': 8, 'countrycodes': 'us'
+        }, headers={'User-Agent': 'TrailCondish/1.0'}, timeout=5)
+        for place in r.json():
+            display = place.get('display_name', '')
+            parts = display.split(',')
+            name = parts[0].strip()
+            context = ', '.join(p.strip() for p in parts[1:3]) if len(parts) > 1 else ''
+            # Check if it looks like a trail/path
+            cls = place.get('class', '')
+            typ = place.get('type', '')
+            item_type = 'trail' if cls in ('highway',) and typ in ('path', 'footway', 'track') else 'area'
+            results.append({
+                'type': item_type,
+                'name': name,
+                'context': context,
+                'osm_type': place.get('osm_type'),
+                'osm_id': place.get('osm_id'),
+                'lat': place.get('lat'),
+                'lon': place.get('lon'),
+            })
+    except:
+        pass
+    
+    # 2. Also check cached Overpass results for matching trail names
+    for cache_key, (ts, data) in list(_overpass_cache.items()):
+        if now - ts > CACHE_TTL:
+            continue
+        for el in data.get('elements', []):
+            tags = el.get('tags', {})
+            name = tags.get('name', '')
+            if name and q.lower() in name.lower():
+                osm_type = el.get('type')
+                osm_id = el.get('id')
+                dup = any(r.get('osm_id') == osm_id and r.get('osm_type') == osm_type for r in results)
+                if not dup:
+                    results.insert(0, {
+                        'type': 'trail',
+                        'name': name,
+                        'context': tags.get('description', '')[:80] if tags.get('description') else '',
+                        'osm_type': osm_type,
+                        'osm_id': osm_id,
+                    })
+    
+    _autocomplete_cache[cache_key] = (now, results)
+    return jsonify(results)
+
 @app.route('/api/search')
 def api_search():
     q = request.args.get('q', '').strip()
@@ -460,4 +527,4 @@ def vote_report(report_id):
 
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=8095, debug=False)
+    app.run(host='0.0.0.0', port=8095, debug=False, threaded=True)

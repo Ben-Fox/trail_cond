@@ -5,7 +5,10 @@
     <div class="container">
         <h1>Find Trails</h1>
         <div class="search-bar">
-            <input type="text" id="searchInput" placeholder="Search trails or areas...">
+            <div class="search-input-wrap">
+                <input type="text" id="searchInput" placeholder="Search trails or areas..." autocomplete="off">
+                <div id="autocompleteDropdown" class="ac-dropdown"></div>
+            </div>
             <select id="stateFilter">
                 <option value="">All States</option>
             </select>
@@ -18,11 +21,27 @@
     </div>
 </section>
 <section class="explore-body">
-    <div class="container explore-layout">
-        <div id="resultsList" class="results-list">
+    <div class="container">
+        <div id="viewToggle" class="view-toggle" style="display:none;">
+            <button id="toggleMap" class="toggle-btn active">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+                Map
+            </button>
+            <button id="toggleList" class="toggle-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                List
+            </button>
+            <span id="resultCount" class="result-count"></span>
+        </div>
+        <div id="mapView" class="map-view" style="display:none;">
+            <div id="map" class="explore-map-full"></div>
+        </div>
+        <div id="listView" class="list-view" style="display:none;">
+            <div id="resultsList" class="results-list"></div>
+        </div>
+        <div id="placeholder" class="placeholder-msg">
             <p class="muted">Search for trails to get started</p>
         </div>
-        <div id="map" class="explore-map"></div>
     </div>
 </section>
 {% endblock %}
@@ -32,16 +51,30 @@ const US_STATES = {"AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","
 const sel = document.getElementById('stateFilter');
 Object.keys(US_STATES).sort().forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
 
-const map = L.map('map').setView([39.5, -98.5], 4);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OSM'}).addTo(map);
-let markers = [];
+let map, markers = [], routeLayers = [];
+let currentView = 'map'; // default to map
+let currentTrails = [];
 
-function clearMarkers() { markers.forEach(m => map.removeLayer(m)); markers = []; }
-function badgeColor(b) { return b === 'red' ? '#c44536' : b === 'yellow' ? '#b08968' : '#2d6a4f'; }
+function initMap() {
+    if (map) return;
+    map = L.map('map').setView([39.5, -98.5], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OSM'}).addTo(map);
+    map.on('zoomend', onZoomChange);
+}
 
-function weatherCode(c) {
-    if (c <= 3) return 'Clear'; if (c <= 49) return 'Foggy'; if (c <= 69) return 'Rainy';
-    if (c <= 79) return 'Snowy'; if (c <= 82) return 'Showers'; return 'Stormy';
+function clearMarkers() {
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    routeLayers.forEach(l => map.removeLayer(l));
+    routeLayers = [];
+}
+
+function onZoomChange() {
+    const zoom = map.getZoom();
+    routeLayers.forEach(l => {
+        if (zoom >= 12) { if (!map.hasLayer(l)) map.addLayer(l); }
+        else { if (map.hasLayer(l)) map.removeLayer(l); }
+    });
 }
 
 function difficultyLabel(sac) {
@@ -49,6 +82,79 @@ function difficultyLabel(sac) {
     return m[sac] || '';
 }
 
+function showView(view) {
+    currentView = view;
+    document.getElementById('mapView').style.display = view === 'map' ? 'block' : 'none';
+    document.getElementById('listView').style.display = view === 'list' ? 'block' : 'none';
+    document.getElementById('toggleMap').classList.toggle('active', view === 'map');
+    document.getElementById('toggleList').classList.toggle('active', view === 'list');
+    if (view === 'map' && map) setTimeout(() => map.invalidateSize(), 50);
+}
+
+document.getElementById('toggleMap').addEventListener('click', () => showView('map'));
+document.getElementById('toggleList').addEventListener('click', () => showView('list'));
+
+// --- Autocomplete ---
+let acTimer = null;
+const searchInput = document.getElementById('searchInput');
+const acDropdown = document.getElementById('autocompleteDropdown');
+
+searchInput.addEventListener('input', () => {
+    clearTimeout(acTimer);
+    const q = searchInput.value.trim();
+    if (q.length < 3) { acDropdown.style.display = 'none'; return; }
+    acTimer = setTimeout(() => fetchAutocomplete(q), 300);
+});
+
+searchInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { acDropdown.style.display = 'none'; doSearch(); }
+    if (e.key === 'Escape') acDropdown.style.display = 'none';
+});
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.search-input-wrap')) acDropdown.style.display = 'none';
+});
+
+async function fetchAutocomplete(q) {
+    try {
+        const res = await fetch('/api/autocomplete?q=' + encodeURIComponent(q));
+        const items = await res.json();
+        if (!items.length) { acDropdown.style.display = 'none'; return; }
+        
+        acDropdown.innerHTML = items.map(item => {
+            const icon = item.type === 'trail'
+                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l4-8 4 6 4-10 6 12"/></svg>'
+                : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+            const label = item.type === 'trail' ? 'Trail' : 'Area';
+            return `<div class="ac-item" data-type="${item.type}" data-osm-type="${item.osm_type}" data-osm-id="${item.osm_id}" data-name="${item.name}">
+                <span class="ac-icon">${icon}</span>
+                <div class="ac-text">
+                    <span class="ac-name">${item.name}</span>
+                    ${item.context ? `<span class="ac-context">${item.context}</span>` : ''}
+                </div>
+                <span class="ac-label ac-label-${item.type}">${label}</span>
+            </div>`;
+        }).join('');
+        acDropdown.style.display = 'block';
+        
+        acDropdown.querySelectorAll('.ac-item').forEach(el => {
+            el.addEventListener('click', () => {
+                acDropdown.style.display = 'none';
+                if (el.dataset.type === 'trail') {
+                    const osmType = el.dataset.osmType === 'way' ? 'way' : 'relation';
+                    window.location = `/trail/${osmType}/${el.dataset.osmId}`;
+                } else {
+                    searchInput.value = el.dataset.name;
+                    doSearch();
+                }
+            });
+        });
+    } catch(e) {
+        acDropdown.style.display = 'none';
+    }
+}
+
+// --- Search ---
 async function doSearch() {
     const q = document.getElementById('searchInput').value;
     const state = document.getElementById('stateFilter').value;
@@ -56,88 +162,118 @@ async function doSearch() {
     if (q) params.set('q', q);
     if (state) params.set('state', state);
     
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('viewToggle').style.display = 'flex';
+    document.getElementById('resultsList').innerHTML = '';
+    showView('map');
+    initMap();
+    
+    // Show loading in list view
     document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching trails via OpenStreetMap...</p></div>';
     
     try {
         const res = await fetch('/api/search?' + params);
         const trails = await res.json();
-        if (trails.error) { document.getElementById('resultsList').innerHTML = `<p class="muted">Error: ${trails.error}</p>`; return; }
-        if (!trails.length) { document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found</p>'; return; }
+        if (trails.error) {
+            document.getElementById('resultsList').innerHTML = `<p class="muted">Error: ${trails.error}</p>`;
+            return;
+        }
+        if (!trails.length) {
+            document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found</p>';
+            document.getElementById('resultCount').textContent = '0 trails found';
+            return;
+        }
         
-        clearMarkers();
-        const bounds = [];
-        let html = `<p class="result-count">${trails.length} trail${trails.length!==1?'s':''} found</p>`;
-        trails.forEach(t => {
-            const diff = difficultyLabel(t.difficulty);
-            const trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
-            
-            html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
-                <h3 class="tc-name">${t.name}</h3>
-                <div class="tc-tags">
-                    ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
-                    ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
-                    ${t.distance ? `<span class="tag">${t.distance}</span>` : ''}
-                    <span class="tag tag-type">${t.osm_type}</span>
-                </div>
-                ${t.desc ? `<p class="tc-desc">${t.desc}</p>` : ''}
-                <a href="${trailUrl}" class="tc-link">View Trail →</a>
-            </div>`;
-            
-            if (t.lat && t.lon) {
-                const m = L.circleMarker([t.lat, t.lon], {radius: 7, color: '#b08968', fillColor: '#b08968', fillOpacity: 0.8})
-                    .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View</a>`).addTo(map);
-                markers.push(m);
-                bounds.push([t.lat, t.lon]);
-            }
-        });
-        document.getElementById('resultsList').innerHTML = html;
-        if (bounds.length) map.fitBounds(bounds, {padding: [30, 30]});
+        currentTrails = trails;
+        renderResults(trails);
     } catch(e) {
         document.getElementById('resultsList').innerHTML = `<p class="muted">Search failed: ${e.message}</p>`;
     }
 }
 
+function renderResults(trails) {
+    clearMarkers();
+    const bounds = [];
+    
+    document.getElementById('resultCount').textContent = `${trails.length} trail${trails.length !== 1 ? 's' : ''} found`;
+    
+    // Build list HTML
+    let html = '';
+    trails.forEach(t => {
+        const diff = difficultyLabel(t.difficulty);
+        const trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+        
+        html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
+            <h3 class="tc-name">${t.name}</h3>
+            <div class="tc-tags">
+                ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
+                ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
+                ${t.distance ? `<span class="tag">${t.distance}</span>` : ''}
+                <span class="tag tag-type">${t.osm_type}</span>
+            </div>
+            ${t.desc ? `<p class="tc-desc">${t.desc}</p>` : ''}
+            <a href="${trailUrl}" class="tc-link">View Trail →</a>
+        </div>`;
+        
+        if (t.lat && t.lon) {
+            const m = L.circleMarker([t.lat, t.lon], {radius: 7, color: '#b08968', fillColor: '#b08968', fillOpacity: 0.8})
+                .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View</a>`).addTo(map);
+            markers.push(m);
+            bounds.push([t.lat, t.lon]);
+        }
+    });
+    
+    document.getElementById('resultsList').innerHTML = html;
+    if (bounds.length) map.fitBounds(bounds, {padding: [30, 30]});
+    
+    // Load route geometry for trails visible on map (lazy)
+    loadRoutes(trails);
+}
+
+async function loadRoutes(trails) {
+    // Load geometry for first 30 trails for route display
+    const toLoad = trails.filter(t => t.lat && t.lon).slice(0, 30);
+    for (const t of toLoad) {
+        try {
+            const res = await fetch(`/api/trail/${t.osm_type}/${t.osm_id}`);
+            const data = await res.json();
+            if (data.geometry && data.geometry.length > 1) {
+                const latlngs = data.geometry.map(p => [p.lat, p.lon]);
+                const line = L.polyline(latlngs, {color: '#2d6a4f', weight: 3, opacity: 0.7});
+                routeLayers.push(line);
+                // Only show if zoomed in enough
+                if (map.getZoom() >= 12) line.addTo(map);
+            }
+        } catch(e) {}
+    }
+}
+
 document.getElementById('searchBtn').addEventListener('click', doSearch);
-document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 
 document.getElementById('nearMeBtn').addEventListener('click', () => {
     if (!navigator.geolocation) return alert('Geolocation not supported');
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('viewToggle').style.display = 'flex';
     document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Getting your location...</p></div>';
+    showView('map');
+    initMap();
+    
     navigator.geolocation.getCurrentPosition(async pos => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
-        document.getElementById('searchInput').value = `Near ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+        searchInput.value = `Near ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
         document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching nearby trails...</p></div>';
         
         try {
             const res = await fetch(`/api/search?lat=${lat}&lon=${lon}`);
             const trails = await res.json();
-            if (!trails.length) { document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found nearby</p>'; return; }
-            
-            clearMarkers();
-            const bounds = [];
-            let html = `<p class="result-count">${trails.length} trail${trails.length!==1?'s':''} found nearby</p>`;
-            trails.forEach(t => {
-                const diff = difficultyLabel(t.difficulty);
-                const trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
-                html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
-                    <h3 class="tc-name">${t.name}</h3>
-                    <div class="tc-tags">
-                        ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
-                        ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
-                        <span class="tag tag-type">${t.osm_type}</span>
-                    </div>
-                    <a href="${trailUrl}" class="tc-link">View Trail →</a>
-                </div>`;
-                if (t.lat && t.lon) {
-                    const m = L.circleMarker([t.lat, t.lon], {radius: 7, color: '#b08968', fillColor: '#b08968', fillOpacity: 0.8})
-                        .bindPopup(`<b>${t.name}</b><br><a href="${trailUrl}">View</a>`).addTo(map);
-                    markers.push(m);
-                    bounds.push([t.lat, t.lon]);
-                }
-            });
-            document.getElementById('resultsList').innerHTML = html;
-            if (bounds.length) map.fitBounds(bounds, {padding: [30, 30]});
+            if (!trails.length) {
+                document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found nearby</p>';
+                document.getElementById('resultCount').textContent = '0 trails found';
+                return;
+            }
+            currentTrails = trails;
+            renderResults(trails);
         } catch(e) {
             document.getElementById('resultsList').innerHTML = `<p class="muted">Error: ${e.message}</p>`;
         }
