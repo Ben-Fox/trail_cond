@@ -208,7 +208,7 @@ async function doSearch() {
     }
 }
 
-function renderResults(trails) {
+function renderResults(trails, skipFitBounds) {
     clearMarkers();
     const bounds = [];
     
@@ -241,7 +241,7 @@ function renderResults(trails) {
     });
     
     document.getElementById('resultsList').innerHTML = html;
-    if (bounds.length) map.fitBounds(bounds, {padding: [30, 30]});
+    if (bounds.length && !skipFitBounds) map.fitBounds(bounds, {padding: [30, 30]});
     
     // Route loading disabled to avoid Overpass rate limits
     // Routes are visible on the Waymarked Trails overlay instead
@@ -269,30 +269,30 @@ async function loadRoutes(trails) {
 initMap();
 document.getElementById('viewToggle').style.display = 'flex';
 
-// Restore map state from sessionStorage
-const savedMap = sessionStorage.getItem('trailcondish_map');
-if (savedMap) {
-    try {
-        const s = JSON.parse(savedMap);
-        map.setView([s.lat, s.lng], s.zoom);
-    } catch(e) {}
-}
-
 // Save map state on move
 map.on('moveend', () => {
     const c = map.getCenter();
     sessionStorage.setItem('trailcondish_map', JSON.stringify({lat: c.lat, lng: c.lng, zoom: map.getZoom()}));
 });
 
-// Restore search results from sessionStorage
+// Restore search results first (without fitting bounds)
 const savedResults = sessionStorage.getItem('trailcondish_results');
 if (savedResults) {
     try {
         const trails = JSON.parse(savedResults);
         if (trails.length) {
             currentTrails = trails;
-            renderResults(trails);
+            renderResults(trails, true); // skip fitBounds
         }
+    } catch(e) {}
+}
+
+// Then restore map position (takes priority over fitBounds)
+const savedMap = sessionStorage.getItem('trailcondish_map');
+if (savedMap) {
+    try {
+        const s = JSON.parse(savedMap);
+        map.setView([s.lat, s.lng], s.zoom);
     } catch(e) {}
 }
 
