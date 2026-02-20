@@ -401,6 +401,35 @@ out geom tags;'''
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/elevation')
+def api_elevation():
+    """Get elevation profile for a list of lat/lon points using Open-Meteo Elevation API."""
+    lats = request.args.get('lats', '')
+    lons = request.args.get('lons', '')
+    if not lats or not lons:
+        return jsonify({'error': 'Missing lats/lons'}), 400
+    
+    try:
+        # Open-Meteo accepts up to ~100 points per request
+        lat_list = lats.split(',')
+        lon_list = lons.split(',')
+        
+        elevations = []
+        # Batch in groups of 100
+        for i in range(0, len(lat_list), 100):
+            batch_lats = ','.join(lat_list[i:i+100])
+            batch_lons = ','.join(lon_list[i:i+100])
+            r = requests.get('https://api.open-meteo.com/v1/elevation', params={
+                'latitude': batch_lats,
+                'longitude': batch_lons,
+            }, timeout=10)
+            data = r.json()
+            elevations.extend(data.get('elevation', []))
+        
+        return jsonify({'elevation': elevations})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/weather/batch')
 def api_weather_batch():
     locations = request.args.get('locations', '')

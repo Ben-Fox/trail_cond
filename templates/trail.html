@@ -108,6 +108,14 @@ async function loadTrail() {
         </form>
     </div>`;
     
+    // === ELEVATION PROFILE ===
+    if (trail.geometry && trail.geometry.length > 2) {
+        html += `<div class="section-block" id="elevationSection">
+            <h2>Elevation Profile</h2>
+            <p class="muted">Loading elevation data...</p>
+        </div>`;
+    }
+    
     // === MAP (BOTTOM) ===
     if (trail.lat && trail.lon) {
         html += `<div class="section-block">
@@ -140,6 +148,97 @@ async function loadTrail() {
         document.getElementById('overlayToggle').addEventListener('change', function() {
             this.checked ? hikingOverlay.addTo(map) : map.removeLayer(hikingOverlay);
         });
+    }
+    
+    // Load elevation profile
+    if (trail.geometry && trail.geometry.length > 2) {
+        // Sample points (max 100 for API)
+        const pts = trail.geometry;
+        const step = Math.max(1, Math.floor(pts.length / 100));
+        const sampled = pts.filter((_, i) => i % step === 0);
+        if (sampled[sampled.length - 1] !== pts[pts.length - 1]) sampled.push(pts[pts.length - 1]);
+        
+        const lats = sampled.map(p => p.lat.toFixed(5)).join(',');
+        const lons = sampled.map(p => p.lon.toFixed(5)).join(',');
+        
+        try {
+            const eRes = await fetch(`/api/elevation?lats=${lats}&lons=${lons}`);
+            const eData = await eRes.json();
+            if (eData.elevation && eData.elevation.length) {
+                const elev = eData.elevation;
+                const minE = Math.min(...elev);
+                const maxE = Math.max(...elev);
+                const gainM = elev.reduce((acc, v, i) => i > 0 && v > elev[i-1] ? acc + (v - elev[i-1]) : acc, 0);
+                const minFt = Math.round(minE * 3.281);
+                const maxFt = Math.round(maxE * 3.281);
+                const gainFt = Math.round(gainM * 3.281);
+                
+                let ehtml = `<div class="elev-stats">
+                    <div class="elev-stat"><span class="detail-label">Min Elevation</span><span class="detail-value">${minFt} ft</span></div>
+                    <div class="elev-stat"><span class="detail-label">Max Elevation</span><span class="detail-value">${maxFt} ft</span></div>
+                    <div class="elev-stat"><span class="detail-label">Elevation Gain</span><span class="detail-value">${gainFt} ft</span></div>
+                </div>
+                <canvas id="elevChart" width="800" height="200" class="elev-chart"></canvas>`;
+                document.getElementById('elevationSection').innerHTML = `<h2>Elevation Profile</h2>${ehtml}`;
+                
+                // Draw chart
+                const canvas = document.getElementById('elevChart');
+                const ctx = canvas.getContext('2d');
+                const w = canvas.width;
+                const h = canvas.height;
+                const pad = {top: 10, right: 10, bottom: 25, left: 50};
+                const cw = w - pad.left - pad.right;
+                const ch = h - pad.top - pad.bottom;
+                const range = maxE - minE || 1;
+                
+                // Background
+                ctx.fillStyle = '#fdfbf7';
+                ctx.fillRect(0, 0, w, h);
+                
+                // Grid lines
+                ctx.strokeStyle = '#e8e0d4';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 4; i++) {
+                    const y = pad.top + (ch / 4) * i;
+                    ctx.beginPath();
+                    ctx.moveTo(pad.left, y);
+                    ctx.lineTo(w - pad.right, y);
+                    ctx.stroke();
+                    
+                    const elevVal = Math.round((maxE - (range / 4) * i) * 3.281);
+                    ctx.fillStyle = '#b08968';
+                    ctx.font = '11px Nunito, sans-serif';
+                    ctx.textAlign = 'right';
+                    ctx.fillText(`${elevVal}ft`, pad.left - 5, y + 4);
+                }
+                
+                // Fill area
+                ctx.beginPath();
+                ctx.moveTo(pad.left, pad.top + ch);
+                for (let i = 0; i < elev.length; i++) {
+                    const x = pad.left + (i / (elev.length - 1)) * cw;
+                    const y = pad.top + ch - ((elev[i] - minE) / range) * ch;
+                    ctx.lineTo(x, y);
+                }
+                ctx.lineTo(pad.left + cw, pad.top + ch);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(45, 106, 79, 0.15)';
+                ctx.fill();
+                
+                // Line
+                ctx.beginPath();
+                for (let i = 0; i < elev.length; i++) {
+                    const x = pad.left + (i / (elev.length - 1)) * cw;
+                    const y = pad.top + ch - ((elev[i] - minE) / range) * ch;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.strokeStyle = '#2d6a4f';
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+            }
+        } catch(e) {
+            document.getElementById('elevationSection').innerHTML = '<h2>Elevation Profile</h2><p class="muted">Could not load elevation data</p>';
+        }
     }
     
     // Load weather conditions
