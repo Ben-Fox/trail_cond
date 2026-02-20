@@ -28,22 +28,25 @@
 {% endblock %}
 {% block scripts %}
 <script>
-const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
+const US_STATES = {"AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California","CO":"Colorado","CT":"Connecticut","DE":"Delaware","FL":"Florida","GA":"Georgia","HI":"Hawaii","ID":"Idaho","IL":"Illinois","IN":"Indiana","IA":"Iowa","KS":"Kansas","KY":"Kentucky","LA":"Louisiana","ME":"Maine","MD":"Maryland","MA":"Massachusetts","MI":"Michigan","MN":"Minnesota","MS":"Mississippi","MO":"Missouri","MT":"Montana","NE":"Nebraska","NV":"Nevada","NH":"New Hampshire","NJ":"New Jersey","NM":"New Mexico","NY":"New York","NC":"North Carolina","ND":"North Dakota","OH":"Ohio","OK":"Oklahoma","OR":"Oregon","PA":"Pennsylvania","RI":"Rhode Island","SC":"South Carolina","SD":"South Dakota","TN":"Tennessee","TX":"Texas","UT":"Utah","VT":"Vermont","VA":"Virginia","WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming"};
 const sel = document.getElementById('stateFilter');
-US_STATES.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+Object.keys(US_STATES).sort().forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
 
 const map = L.map('map').setView([39.5, -98.5], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OSM'}).addTo(map);
 let markers = [];
 
 function clearMarkers() { markers.forEach(m => map.removeLayer(m)); markers = []; }
-
 function badgeColor(b) { return b === 'red' ? '#c44536' : b === 'yellow' ? '#b08968' : '#2d6a4f'; }
-function badgeLabel(b) { return b === 'red' ? 'Poor' : b === 'yellow' ? 'Fair' : 'Good'; }
 
 function weatherCode(c) {
     if (c <= 3) return 'Clear'; if (c <= 49) return 'Foggy'; if (c <= 69) return 'Rainy';
     if (c <= 79) return 'Snowy'; if (c <= 82) return 'Showers'; return 'Stormy';
+}
+
+function difficultyLabel(sac) {
+    const m = {'hiking':'Easy','mountain_hiking':'Moderate','demanding_mountain_hiking':'Hard','alpine_hiking':'Expert','demanding_alpine_hiking':'Expert+','difficult_alpine_hiking':'Extreme'};
+    return m[sac] || '';
 }
 
 async function doSearch() {
@@ -53,52 +56,45 @@ async function doSearch() {
     if (q) params.set('q', q);
     if (state) params.set('state', state);
     
-    document.getElementById('resultsList').innerHTML = '<p class="muted">Searching...</p>';
-    const res = await fetch('/api/search?' + params);
-    const trails = await res.json();
-    if (trails.error) { document.getElementById('resultsList').innerHTML = '<p class="muted">Error searching</p>'; return; }
-    if (!trails.length) { document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found</p>'; return; }
+    document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching trails via OpenStreetMap...</p></div>';
     
-    // Batch weather
-    const locs = trails.filter(t => t.lat && t.lon).map(t => `${t.lat},${t.lon}`).join('|');
-    let weatherMap = {};
-    if (locs) {
-        try {
-            const wr = await fetch('/api/weather/batch?locations=' + encodeURIComponent(locs));
-            const wd = await wr.json();
-            wd.forEach(w => { weatherMap[`${w.lat},${w.lon}`] = w; });
-        } catch(e) {}
+    try {
+        const res = await fetch('/api/search?' + params);
+        const trails = await res.json();
+        if (trails.error) { document.getElementById('resultsList').innerHTML = `<p class="muted">Error: ${trails.error}</p>`; return; }
+        if (!trails.length) { document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found</p>'; return; }
+        
+        clearMarkers();
+        const bounds = [];
+        let html = `<p class="result-count">${trails.length} trail${trails.length!==1?'s':''} found</p>`;
+        trails.forEach(t => {
+            const diff = difficultyLabel(t.difficulty);
+            const trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+            
+            html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
+                <h3 class="tc-name">${t.name}</h3>
+                <div class="tc-tags">
+                    ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
+                    ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
+                    ${t.distance ? `<span class="tag">${t.distance}</span>` : ''}
+                    <span class="tag tag-type">${t.osm_type}</span>
+                </div>
+                ${t.desc ? `<p class="tc-desc">${t.desc}</p>` : ''}
+                <a href="${trailUrl}" class="tc-link">View Trail →</a>
+            </div>`;
+            
+            if (t.lat && t.lon) {
+                const m = L.circleMarker([t.lat, t.lon], {radius: 7, color: '#b08968', fillColor: '#b08968', fillOpacity: 0.8})
+                    .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View</a>`).addTo(map);
+                markers.push(m);
+                bounds.push([t.lat, t.lon]);
+            }
+        });
+        document.getElementById('resultsList').innerHTML = html;
+        if (bounds.length) map.fitBounds(bounds, {padding: [30, 30]});
+    } catch(e) {
+        document.getElementById('resultsList').innerHTML = `<p class="muted">Search failed: ${e.message}</p>`;
     }
-    
-    clearMarkers();
-    const bounds = [];
-    let html = '';
-    trails.forEach(t => {
-        const w = weatherMap[`${t.lat},${t.lon}`] || {};
-        const tempF = w.temp_c != null ? Math.round(w.temp_c * 9/5 + 32) : '--';
-        const wDesc = w.weathercode != null ? weatherCode(w.weathercode) : '';
-        // Simple badge: snowy conditions from weather code
-        let badge = 'green', badgeTxt = 'Good';
-        if (w.weathercode >= 70) { badge = 'red'; badgeTxt = 'Snowy'; }
-        else if (w.weathercode >= 50) { badge = 'yellow'; badgeTxt = 'Wet'; }
-        
-        html += `<div class="trail-card" onclick="window.location='/trail/${t.id}'">
-            <div class="tc-badge" style="background:${badgeColor(badge)}">${badgeTxt}</div>
-            <div class="tc-temp">${tempF}°F</div>
-            <h3 class="tc-name">${t.name}</h3>
-            <p class="tc-loc">${t.city ? t.city + ', ' : ''}${t.state || ''}</p>
-            <a href="/trail/${t.id}" class="tc-link">View Trail</a>
-        </div>`;
-        
-        if (t.lat && t.lon) {
-            const m = L.circleMarker([t.lat, t.lon], {radius: 8, color: '#b08968', fillColor: '#b08968', fillOpacity: 0.8})
-                .bindPopup(`<b>${t.name}</b><br><a href="/trail/${t.id}">View</a>`).addTo(map);
-            markers.push(m);
-            bounds.push([t.lat, t.lon]);
-        }
-    });
-    document.getElementById('resultsList').innerHTML = html;
-    if (bounds.length) map.fitBounds(bounds, {padding: [30, 30]});
 }
 
 document.getElementById('searchBtn').addEventListener('click', doSearch);
@@ -106,14 +102,45 @@ document.getElementById('searchInput').addEventListener('keydown', e => { if (e.
 
 document.getElementById('nearMeBtn').addEventListener('click', () => {
     if (!navigator.geolocation) return alert('Geolocation not supported');
-    navigator.geolocation.getCurrentPosition(pos => {
-        const params = new URLSearchParams({lat: pos.coords.latitude, lon: pos.coords.longitude});
-        document.getElementById('searchInput').value = '';
-        fetch('/api/search?' + params).then(r => r.json()).then(trails => {
-            // Reuse search display
-            document.getElementById('searchInput').value = `Near ${pos.coords.latitude.toFixed(2)}, ${pos.coords.longitude.toFixed(2)}`;
-            doSearch();
-        });
+    document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Getting your location...</p></div>';
+    navigator.geolocation.getCurrentPosition(async pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        document.getElementById('searchInput').value = `Near ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+        document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching nearby trails...</p></div>';
+        
+        try {
+            const res = await fetch(`/api/search?lat=${lat}&lon=${lon}`);
+            const trails = await res.json();
+            if (!trails.length) { document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found nearby</p>'; return; }
+            
+            clearMarkers();
+            const bounds = [];
+            let html = `<p class="result-count">${trails.length} trail${trails.length!==1?'s':''} found nearby</p>`;
+            trails.forEach(t => {
+                const diff = difficultyLabel(t.difficulty);
+                const trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+                html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
+                    <h3 class="tc-name">${t.name}</h3>
+                    <div class="tc-tags">
+                        ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
+                        ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
+                        <span class="tag tag-type">${t.osm_type}</span>
+                    </div>
+                    <a href="${trailUrl}" class="tc-link">View Trail →</a>
+                </div>`;
+                if (t.lat && t.lon) {
+                    const m = L.circleMarker([t.lat, t.lon], {radius: 7, color: '#b08968', fillColor: '#b08968', fillOpacity: 0.8})
+                        .bindPopup(`<b>${t.name}</b><br><a href="${trailUrl}">View</a>`).addTo(map);
+                    markers.push(m);
+                    bounds.push([t.lat, t.lon]);
+                }
+            });
+            document.getElementById('resultsList').innerHTML = html;
+            if (bounds.length) map.fitBounds(bounds, {padding: [30, 30]});
+        } catch(e) {
+            document.getElementById('resultsList').innerHTML = `<p class="muted">Error: ${e.message}</p>`;
+        }
     }, () => alert('Could not get location'));
 });
 </script>

@@ -274,3 +274,20 @@ body {
     .trail-map { height: 280px; }
     .weather-temp { font-size: 2rem; }
 }
+
+/* Loading spinner */
+.loading-spinner { text-align: center; padding: 3rem 1rem; }
+.loading-spinner p { color: var(--text-light); margin-top: 1rem; }
+.spinner { width: 40px; height: 40px; margin: 0 auto; border: 4px solid var(--sand); border-top-color: var(--green); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Result count */
+.result-count { color: var(--text-light); font-size: 0.9rem; margin-bottom: 0.5rem; }
+
+/* Trail tags */
+.tc-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.3rem 0; }
+.tc-desc { font-size: 0.85rem; color: var(--text-light); margin-top: 0.3rem; }
+.tag-diff { background: var(--green); color: #fff; }
+.tag-type { background: var(--brown-light); color: #fff; font-size: 0.75rem; }
+.trail-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+.trail-operator { color: var(--text-light); font-size: 0.9rem; }

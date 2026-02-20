@@ -1,13 +1,119 @@
 from flask import Flask, render_template, request, jsonify
 import requests
 import hashlib
+import time
 from database import get_db, init_db
 from datetime import datetime, timedelta
+from functools import lru_cache
 
 app = Flask(__name__)
 RIDB_KEY = 'b4cf5317-0be1-4127-97de-5bed2d3b0b68'
 RIDB_BASE = 'https://ridb.recreation.gov/api/v1'
-TRAIL_TYPES = ['TRAIL', 'TRAILHEAD']
+OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
+
+STATE_NAMES = {
+    'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California',
+    'CO':'Colorado','CT':'Connecticut','DE':'Delaware','FL':'Florida','GA':'Georgia',
+    'HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana','IA':'Iowa',
+    'KS':'Kansas','KY':'Kentucky','LA':'Louisiana','ME':'Maine','MD':'Maryland',
+    'MA':'Massachusetts','MI':'Michigan','MN':'Minnesota','MS':'Mississippi','MO':'Missouri',
+    'MT':'Montana','NE':'Nebraska','NV':'Nevada','NH':'New Hampshire','NJ':'New Jersey',
+    'NM':'New Mexico','NY':'New York','NC':'North Carolina','ND':'North Dakota','OH':'Ohio',
+    'OK':'Oklahoma','OR':'Oregon','PA':'Pennsylvania','RI':'Rhode Island','SC':'South Carolina',
+    'SD':'South Dakota','TN':'Tennessee','TX':'Texas','UT':'Utah','VT':'Vermont',
+    'VA':'Virginia','WA':'Washington','WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming'
+}
+
+# Simple in-memory cache for Overpass results
+_overpass_cache = {}
+CACHE_TTL = 600  # 10 minutes
+
+NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
+
+def geocode(query):
+    """Use Nominatim to geocode a query, return dict with lat/lon/bbox or None.
+    Fetches multiple results and prefers natural features / parks."""
+    r = requests.get(NOMINATIM_URL, params={
+        'q': query, 'format': 'json', 'limit': 5, 'countrycodes': 'us'
+    }, headers={'User-Agent': 'TrailCondish/1.0'}, timeout=10)
+    results = r.json()
+    if not results:
+        return None
+    
+    # Prefer natural features, parks, water bodies over residential areas
+    def score(res):
+        cls = res.get('class', '')
+        typ = res.get('type', '')
+        if cls == 'natural' or cls == 'water' or typ in ('lake', 'peak', 'mountain', 'river'):
+            return 0
+        if cls == 'leisure' or 'park' in typ or 'forest' in typ:
+            return 1
+        if cls == 'boundary' and 'national' in res.get('display_name', '').lower():
+            return 2
+        if cls in ('place',) and typ in ('city', 'town', 'village'):
+            return 3
+        return 5
+    
+    best = min(results, key=score)
+    
+    bbox = best.get('boundingbox', [])
+    return {
+        'lat': float(best['lat']),
+        'lon': float(best['lon']),
+        'bbox': [float(b) for b in bbox] if len(bbox) == 4 else None
+    }
+
+def overpass_query(query):
+    cache_key = hashlib.md5(query.encode()).hexdigest()
+    now = time.time()
+    if cache_key in _overpass_cache:
+        ts, data = _overpass_cache[cache_key]
+        if now - ts < CACHE_TTL:
+            return data
+    r = requests.post(OVERPASS_URL, data={'data': query}, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    _overpass_cache[cache_key] = (now, data)
+    return data
+
+def parse_osm_trails(data):
+    """Parse Overpass response into trail list."""
+    results = []
+    seen = set()
+    for el in data.get('elements', []):
+        osm_type = el.get('type')  # way or relation
+        osm_id = el.get('id')
+        tags = el.get('tags', {})
+        name = tags.get('name', '')
+        if not name:
+            continue
+        key = f"{osm_type}:{osm_id}"
+        if key in seen:
+            continue
+        seen.add(key)
+        
+        # Get center coords
+        lat = lon = None
+        if 'center' in el:
+            lat = el['center'].get('lat')
+            lon = el['center'].get('lon')
+        elif 'lat' in el:
+            lat = el.get('lat')
+            lon = el.get('lon')
+        
+        results.append({
+            'id': f"{osm_type}:{osm_id}",
+            'osm_type': osm_type,
+            'osm_id': osm_id,
+            'name': name,
+            'lat': lat,
+            'lon': lon,
+            'difficulty': tags.get('sac_scale', ''),
+            'surface': tags.get('surface', ''),
+            'distance': tags.get('distance', ''),
+            'desc': tags.get('description', tags.get('note', ''))[:200] if tags.get('description') or tags.get('note') else '',
+        })
+    return results
 
 # --- Pages ---
 @app.route('/')
@@ -18,96 +124,171 @@ def index():
 def explore():
     return render_template('explore.html')
 
+@app.route('/trail/<osm_type>/<int:osm_id>')
+def trail_detail(osm_type, osm_id):
+    if osm_type not in ('way', 'relation'):
+        return 'Invalid trail type', 404
+    return render_template('trail.html', osm_type=osm_type, osm_id=osm_id)
+
+# Keep old route for backwards compat
 @app.route('/trail/<facility_id>')
-def trail_detail(facility_id):
-    return render_template('trail.html', facility_id=facility_id)
+def trail_detail_legacy(facility_id):
+    return render_template('trail.html', osm_type='legacy', osm_id=facility_id)
 
 # --- API ---
 @app.route('/api/search')
 def api_search():
-    q = request.args.get('q', '')
-    state = request.args.get('state', '')
-    lat = request.args.get('lat', '')
-    lon = request.args.get('lon', '')
-    limit = request.args.get('limit', '20')
-    
-    params = {'apikey': RIDB_KEY, 'limit': 50, 'offset': 0, 'activity': 'HIKING'}
-    if q:
-        params['query'] = q
-    if state:
-        params['state'] = state
-    if lat and lon:
-        params['latitude'] = lat
-        params['longitude'] = lon
-        params['radius'] = 50
+    q = request.args.get('q', '').strip()
+    state = request.args.get('state', '').strip()
+    lat = request.args.get('lat', '').strip()
+    lon = request.args.get('lon', '').strip()
     
     try:
-        # Search with hiking activity filter
-        r = requests.get(f'{RIDB_BASE}/facilities', params=params, timeout=10)
-        data = r.json()
-        facilities = data.get('RECDATA', [])
+        if lat and lon:
+            # Near me search
+            query = f'''[out:json][timeout:25];
+(
+  way["highway"~"path|footway"]["name"](around:8000,{lat},{lon});
+  relation["route"="hiking"]["name"](around:8000,{lat},{lon});
+);
+out center tags;'''
+        elif state and state in STATE_NAMES:
+            state_name = STATE_NAMES[state]
+            query = f'''[out:json][timeout:25];
+area["name"="{state_name}"]["admin_level"="4"]->.searchArea;
+(
+  relation["route"="hiking"]["name"](area.searchArea);
+);
+out center tags 50;'''
+        elif q:
+            # Geocode the query to get a bounding box, then search trails in that area
+            geo = geocode(q)
+            results = []
+            
+            if geo and geo['bbox']:
+                south, north, west, east = geo['bbox']
+                # Ensure minimum bbox size (~20km)
+                lat_span = north - south
+                lon_span = east - west
+                if lat_span < 0.2:
+                    pad_lat = (0.2 - lat_span) / 2
+                    south -= pad_lat
+                    north += pad_lat
+                if lon_span < 0.2:
+                    pad_lon = (0.2 - lon_span) / 2
+                    west -= pad_lon
+                    east += pad_lon
+                bbox_str = f"{south},{west},{north},{east}"
+                bbox_query = f'''[out:json][timeout:25];
+(
+  way["highway"~"path|footway"]["name"]({bbox_str});
+  relation["route"="hiking"]["name"]({bbox_str});
+);
+out center tags 100;'''
+                try:
+                    results = parse_osm_trails(overpass_query(bbox_query))
+                except:
+                    pass
+            elif geo:
+                # No bbox, use around search
+                around_query = f'''[out:json][timeout:25];
+(
+  way["highway"~"path|footway"]["name"](around:15000,{geo['lat']},{geo['lon']});
+  relation["route"="hiking"]["name"](around:15000,{geo['lat']},{geo['lon']});
+);
+out center tags 100;'''
+                try:
+                    results = parse_osm_trails(overpass_query(around_query))
+                except:
+                    pass
+            
+            # Also search hiking relations by name globally (fast)
+            try:
+                name_query = f'''[out:json][timeout:10];
+relation["route"="hiking"]["name"~"{q}",i];
+out center tags 20;'''
+                name_results = parse_osm_trails(overpass_query(name_query))
+                seen_ids = {r['id'] for r in results}
+                for r in name_results:
+                    if r['id'] not in seen_ids:
+                        results.append(r)
+            except:
+                pass
+            
+            return jsonify(results[:100])
+        else:
+            return jsonify([])
         
-        # Also do a broader search without activity filter to catch trailheads
-        params2 = {k: v for k, v in params.items() if k != 'activity'}
-        params2['limit'] = 50
-        r2 = requests.get(f'{RIDB_BASE}/facilities', params=params2, timeout=10)
-        data2 = r2.json()
-        seen_ids = {f.get('FacilityID') for f in facilities}
-        for f in data2.get('RECDATA', []):
-            if f.get('FacilityID') not in seen_ids:
-                if (f.get('FacilityTypeDescription', '').upper() in TRAIL_TYPES
-                    or 'trail' in f.get('FacilityName', '').lower()
-                    or 'hik' in f.get('FacilityName', '').lower()):
-                    facilities.append(f)
-        
-        trails = facilities
-        results = []
-        for f in trails:
-            results.append({
-                'id': f.get('FacilityID'),
-                'name': f.get('FacilityName', ''),
-                'desc': f.get('FacilityDescription', '')[:200],
-                'lat': f.get('FacilityLatitude'),
-                'lon': f.get('FacilityLongitude'),
-                'state': f.get('FACILITYADDRESS', [{}])[0].get('AddressStateCode', '') if f.get('FACILITYADDRESS') else '',
-                'city': f.get('FACILITYADDRESS', [{}])[0].get('City', '') if f.get('FACILITYADDRESS') else '',
-            })
-        return jsonify(results)
+        results = parse_osm_trails(overpass_query(query))
+        return jsonify(results[:100])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/trail/<facility_id>')
-def api_trail(facility_id):
+@app.route('/api/trail/<osm_type>/<int:osm_id>')
+def api_trail(osm_type, osm_id):
+    if osm_type not in ('way', 'relation'):
+        return jsonify({'error': 'Invalid type'}), 400
     try:
-        params = {'apikey': RIDB_KEY}
-        r = requests.get(f'{RIDB_BASE}/facilities/{facility_id}', params=params, timeout=10)
-        f = r.json()
+        query = f'''[out:json][timeout:25];
+{osm_type}({osm_id});
+out geom tags;'''
+        data = overpass_query(query)
+        elements = data.get('elements', [])
+        if not elements:
+            return jsonify({'error': 'Trail not found'}), 404
         
-        # Get activities
-        ar = requests.get(f'{RIDB_BASE}/facilities/{facility_id}/activities', params=params, timeout=10)
-        activities = [a.get('ActivityName', '') for a in ar.json().get('RECDATA', [])]
+        el = elements[0]
+        tags = el.get('tags', {})
         
-        # Get media
-        mr = requests.get(f'{RIDB_BASE}/facilities/{facility_id}/media', params=params, timeout=10)
-        media = [{'url': m.get('URL', ''), 'title': m.get('Title', '')} for m in mr.json().get('RECDATA', [])]
+        # Extract geometry
+        geometry = []
+        if osm_type == 'way' and 'geometry' in el:
+            geometry = [{'lat': p['lat'], 'lon': p['lon']} for p in el['geometry']]
+        elif osm_type == 'relation' and 'members' in el:
+            for member in el.get('members', []):
+                if member.get('type') == 'way' and 'geometry' in member:
+                    geometry.extend([{'lat': p['lat'], 'lon': p['lon']} for p in member['geometry']])
         
-        # Get addresses
-        addr = requests.get(f'{RIDB_BASE}/facilities/{facility_id}/facilityaddresses', params=params, timeout=10)
-        addresses = addr.json().get('RECDATA', [])
+        # Calculate center from geometry
+        lat = lon = None
+        if geometry:
+            lat = sum(p['lat'] for p in geometry) / len(geometry)
+            lon = sum(p['lon'] for p in geometry) / len(geometry)
+        elif 'center' in el:
+            lat = el['center']['lat']
+            lon = el['center']['lon']
+        
+        # Calculate approximate distance in km from geometry
+        distance_km = None
+        if len(geometry) > 1:
+            from math import radians, sin, cos, sqrt, atan2
+            total = 0
+            for i in range(len(geometry) - 1):
+                lat1, lon1 = radians(geometry[i]['lat']), radians(geometry[i]['lon'])
+                lat2, lon2 = radians(geometry[i+1]['lat']), radians(geometry[i+1]['lon'])
+                dlat = lat2 - lat1
+                dlon = lon2 - lon1
+                a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
+                total += 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
+            distance_km = round(total, 1)
         
         result = {
-            'id': f.get('FacilityID'),
-            'name': f.get('FacilityName', ''),
-            'desc': f.get('FacilityDescription', ''),
-            'directions': f.get('FacilityDirections', ''),
-            'lat': f.get('FacilityLatitude'),
-            'lon': f.get('FacilityLongitude'),
-            'phone': f.get('FacilityPhone', ''),
-            'email': f.get('FacilityEmail', ''),
-            'activities': activities,
-            'media': media,
-            'state': addresses[0].get('AddressStateCode', '') if addresses else '',
-            'city': addresses[0].get('City', '') if addresses else '',
+            'osm_type': osm_type,
+            'osm_id': osm_id,
+            'name': tags.get('name', f'{osm_type}/{osm_id}'),
+            'desc': tags.get('description', tags.get('note', '')),
+            'lat': lat,
+            'lon': lon,
+            'geometry': geometry,
+            'difficulty': tags.get('sac_scale', ''),
+            'surface': tags.get('surface', ''),
+            'distance_km': distance_km,
+            'distance_tag': tags.get('distance', ''),
+            'access': tags.get('access', ''),
+            'wheelchair': tags.get('wheelchair', ''),
+            'network': tags.get('network', ''),
+            'operator': tags.get('operator', ''),
+            'website': tags.get('website', tags.get('url', '')),
         }
         return jsonify(result)
     except Exception as e:
@@ -115,14 +296,14 @@ def api_trail(facility_id):
 
 @app.route('/api/weather/batch')
 def api_weather_batch():
-    locations = request.args.get('locations', '')  # "lat,lon|lat,lon|..."
+    locations = request.args.get('locations', '')
     if not locations:
         return jsonify([])
     pairs = [l.split(',') for l in locations.split('|') if ',' in l]
     results = []
     for lat, lon in pairs[:20]:
         try:
-            r = requests.get(f'https://api.open-meteo.com/v1/forecast', params={
+            r = requests.get('https://api.open-meteo.com/v1/forecast', params={
                 'latitude': lat, 'longitude': lon,
                 'current_weather': 'true'
             }, timeout=8)
@@ -138,9 +319,6 @@ def api_weather_history():
     lon = request.args.get('lon')
     if not lat or not lon:
         return jsonify({'error': 'lat/lon required'}), 400
-    
-    end = datetime.utcnow().date()
-    start = end - timedelta(days=7)
     
     try:
         r = requests.get('https://api.open-meteo.com/v1/forecast', params={
@@ -161,7 +339,6 @@ def api_weather_history():
         min_temps = [v for v in (daily.get('temperature_2m_min') or []) if v is not None]
         avg_min = sum(min_temps) / len(min_temps) if min_temps else 0
         
-        # Infer conditions
         reasons = []
         condition = 'clear'
         color = '#2d6a4f'
@@ -199,7 +376,6 @@ def api_weather_history():
         if not reasons:
             reasons.append('Conditions look good')
         
-        # Badge level
         badge = 'green'
         if condition in ('wet', 'muddy'):
             badge = 'yellow'
@@ -234,29 +410,15 @@ def api_weather_history():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/trails/nearby')
-def api_trails_nearby():
-    lat = request.args.get('lat')
-    lon = request.args.get('lon')
-    if not lat or not lon:
-        return jsonify({'error': 'lat/lon required'}), 400
-    try:
-        bbox = f'{float(lon)-0.1},{float(lat)-0.1},{float(lon)+0.1},{float(lat)+0.1}'
-        r = requests.get(f'https://hiking.waymarkedtrails.org/api/v1/list/search', params={
-            'bbox': bbox, 'limit': 10
-        }, timeout=10)
-        return jsonify(r.json() if r.status_code == 200 else [])
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/trail/<facility_id>/reports')
+# Reports use facility_id which is now "way:123" or "relation:456"
+@app.route('/api/trail/<path:facility_id>/reports')
 def get_reports(facility_id):
     db = get_db()
     reports = db.execute('SELECT * FROM reports WHERE facility_id=? ORDER BY created_at DESC', (facility_id,)).fetchall()
     db.close()
     return jsonify([dict(r) for r in reports])
 
-@app.route('/api/trail/<facility_id>/reports', methods=['POST'])
+@app.route('/api/trail/<path:facility_id>/reports', methods=['POST'])
 def add_report(facility_id):
     data = request.json
     db = get_db()
@@ -278,7 +440,6 @@ def vote_report(report_id):
             if existing['vote_type'] == vote_type:
                 db.close()
                 return jsonify({'error': 'Already voted'}), 400
-            # Change vote
             db.execute('UPDATE votes SET vote_type=? WHERE report_id=? AND ip_hash=?', (vote_type, report_id, ip_hash))
             if vote_type == 'up':
                 db.execute('UPDATE reports SET upvotes=upvotes+1, downvotes=downvotes-1 WHERE id=?', (report_id,))

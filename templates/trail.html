@@ -2,30 +2,51 @@
 {% block title %}Trail Details — Trail Condish{% endblock %}
 {% block content %}
 <div class="container trail-page" id="trailContent">
-    <p class="muted">Loading trail info...</p>
+    <div class="loading-spinner"><div class="spinner"></div><p>Loading trail info...</p></div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
-const FID = '{{ facility_id }}';
+const OSM_TYPE = '{{ osm_type }}';
+const OSM_ID = '{{ osm_id }}';
+const FID = `${OSM_TYPE}/${OSM_ID}`;
+const REPORT_KEY = `${OSM_TYPE}:${OSM_ID}`;
 const weatherDescriptions = {0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Foggy',48:'Rime fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Heavy freezing rain',71:'Light snow',73:'Snow',75:'Heavy snow',77:'Snow grains',80:'Light showers',81:'Showers',82:'Heavy showers',85:'Snow showers',86:'Heavy snow showers',95:'Thunderstorm',96:'Thunderstorm w/ hail',99:'Severe thunderstorm'};
+
+function difficultyLabel(sac) {
+    const m = {'hiking':'Easy','mountain_hiking':'Moderate','demanding_mountain_hiking':'Hard','alpine_hiking':'Expert','demanding_alpine_hiking':'Expert+','difficult_alpine_hiking':'Extreme'};
+    return m[sac] || '';
+}
 
 async function loadTrail() {
     const [trailRes, reportsRes] = await Promise.all([
         fetch(`/api/trail/${FID}`),
-        fetch(`/api/trail/${FID}/reports`)
+        fetch(`/api/trail/${REPORT_KEY}/reports`)
     ]);
     const trail = await trailRes.json();
     const reports = await reportsRes.json();
-    if (trail.error) { document.getElementById('trailContent').innerHTML = '<p>Trail not found</p>'; return; }
+    if (trail.error) { document.getElementById('trailContent').innerHTML = `<p>Trail not found: ${trail.error}</p>`; return; }
     
-    // Strip HTML tags from description
-    const tmp = document.createElement('div'); tmp.innerHTML = trail.desc || ''; const desc = tmp.textContent;
-    const tmp2 = document.createElement('div'); tmp2.innerHTML = trail.directions || ''; const dirs = tmp2.textContent;
+    const diff = difficultyLabel(trail.difficulty);
+    const distKm = trail.distance_km || trail.distance_tag;
+    const distMi = trail.distance_km ? (trail.distance_km * 0.621371).toFixed(1) : null;
     
     let html = `<h1>${trail.name}</h1>`;
-    html += `<p class="trail-location">${trail.city ? trail.city + ', ' : ''}${trail.state || ''}</p>`;
-    if (desc) html += `<p class="trail-desc">${desc}</p>`;
+    
+    // Tags row
+    html += `<div class="trail-tags">`;
+    if (diff) html += `<span class="tag tag-diff">${diff}</span>`;
+    if (trail.surface) html += `<span class="tag">${trail.surface}</span>`;
+    if (distMi) html += `<span class="tag">${distMi} mi (${trail.distance_km} km)</span>`;
+    else if (distKm) html += `<span class="tag">${distKm}</span>`;
+    if (trail.access) html += `<span class="tag">Access: ${trail.access}</span>`;
+    if (trail.wheelchair) html += `<span class="tag">♿ ${trail.wheelchair}</span>`;
+    if (trail.network) html += `<span class="tag">${trail.network}</span>`;
+    html += `</div>`;
+    
+    if (trail.desc) html += `<p class="trail-desc">${trail.desc}</p>`;
+    if (trail.operator) html += `<p class="trail-operator">Managed by: ${trail.operator}</p>`;
+    if (trail.website) html += `<p><a href="${trail.website}" target="_blank" rel="noopener">Official Website</a></p>`;
     
     // Map
     if (trail.lat && trail.lon) {
@@ -35,21 +56,8 @@ async function loadTrail() {
         </div>`;
     }
     
-    // Weather conditions placeholder
+    // Weather
     html += `<div class="section-block" id="weatherSection"><h2>Trail Conditions</h2><p class="muted">Loading weather data...</p></div>`;
-    
-    // Directions
-    if (dirs) html += `<div class="section-block"><h2>Directions</h2><p>${dirs}</p></div>`;
-    
-    // Activities
-    if (trail.activities && trail.activities.length) {
-        html += `<div class="section-block"><h2>Activities</h2><div class="tag-list">${trail.activities.map(a => `<span class="tag">${a}</span>`).join('')}</div></div>`;
-    }
-    
-    // Photos
-    if (trail.media && trail.media.length) {
-        html += `<div class="section-block"><h2>Photos</h2><div class="photo-grid">${trail.media.map(m => `<img src="${m.url}" alt="${m.title}" loading="lazy">`).join('')}</div></div>`;
-    }
     
     // Reports
     html += `<div class="section-block"><h2>Community Reports</h2><div id="reportsList">${renderReports(reports)}</div>`;
@@ -64,13 +72,24 @@ async function loadTrail() {
         </form>
     </div>`;
     
+    // OSM attribution
+    html += `<p class="muted" style="margin-top:2rem;font-size:0.8rem">Trail data from <a href="https://www.openstreetmap.org/${OSM_TYPE}/${OSM_ID}" target="_blank">OpenStreetMap</a></p>`;
+    
     document.getElementById('trailContent').innerHTML = html;
     
-    // Init map
+    // Init map with trail geometry
     if (trail.lat && trail.lon) {
         const map = L.map('trailMap').setView([trail.lat, trail.lon], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OSM'}).addTo(map);
-        L.marker([trail.lat, trail.lon]).addTo(map).bindPopup(trail.name).openPopup();
+        
+        // Draw trail geometry as polyline
+        if (trail.geometry && trail.geometry.length > 1) {
+            const latlngs = trail.geometry.map(p => [p.lat, p.lon]);
+            const polyline = L.polyline(latlngs, {color: '#c44536', weight: 4, opacity: 0.8}).addTo(map);
+            map.fitBounds(polyline.getBounds(), {padding: [30, 30]});
+        } else {
+            L.marker([trail.lat, trail.lon]).addTo(map).bindPopup(trail.name).openPopup();
+        }
         
         const hikingOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.7, attribution:'Waymarked Trails'});
         hikingOverlay.addTo(map);
@@ -86,19 +105,16 @@ async function loadTrail() {
         const w = await wr.json();
         if (!w.error) {
             let whtml = '';
-            // Current
             const tempF = Math.round(w.current.temp_c * 9/5 + 32);
             const wDesc = weatherDescriptions[w.current.weathercode] || 'Unknown';
             whtml += `<div class="weather-current"><span class="weather-temp">${tempF}°F</span> <span class="weather-desc">${wDesc}</span> <span class="weather-wind">Wind: ${w.current.windspeed} km/h</span></div>`;
             
-            // Inference
             const inf = w.inference;
             whtml += `<div class="condition-badge" style="background:${inf.color}">${inf.condition.toUpperCase()}</div>`;
             whtml += `<div class="condition-reasons">`;
             inf.reasons.forEach(r => { whtml += `<p class="reason">${r}</p>`; });
             whtml += `</div>`;
             
-            // 7-day table
             whtml += `<div class="weather-history"><h3>7-Day Weather History</h3><div class="history-grid">`;
             for (let i = 0; i < (w.daily.dates||[]).length; i++) {
                 const d = w.daily.dates[i];
@@ -119,15 +135,15 @@ async function loadTrail() {
         e.preventDefault();
         const fd = new FormData(this);
         const data = Object.fromEntries(fd);
-        await fetch(`/api/trail/${FID}/reports`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+        await fetch(`/api/trail/${REPORT_KEY}/reports`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
         this.reset();
-        const rr = await fetch(`/api/trail/${FID}/reports`);
+        const rr = await fetch(`/api/trail/${REPORT_KEY}/reports`);
         document.getElementById('reportsList').innerHTML = renderReports(await rr.json());
     });
 }
 
 function renderReports(reports) {
-    if (!reports.length) return '<p class="muted">No reports yet. Be the first!</p>';
+    if (!reports || !reports.length) return '<p class="muted">No reports yet. Be the first!</p>';
     return reports.map(r => `<div class="report">
         <div class="report-header">
             <span class="report-condition tag">${r.trail_condition || ''}</span>
@@ -151,7 +167,7 @@ function renderReports(reports) {
 
 async function vote(id, type) {
     await fetch(`/api/reports/${id}/vote`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({vote_type: type})});
-    const rr = await fetch(`/api/trail/${FID}/reports`);
+    const rr = await fetch(`/api/trail/${REPORT_KEY}/reports`);
     document.getElementById('reportsList').innerHTML = renderReports(await rr.json());
 }
 
