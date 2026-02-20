@@ -375,6 +375,43 @@ def api_weather_history():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/trails/nearby')
+def api_trails_nearby():
+    """Proxy to Waymarked Trails API for nearby trail details."""
+    lat = request.args.get('lat')
+    lon = request.args.get('lon')
+    query = request.args.get('q', '')
+    if not lat or not lon:
+        return jsonify({'error': 'lat and lon required'}), 400
+    results = []
+    # Search by bbox
+    try:
+        delta = 0.15
+        bbox = f"{float(lon)-delta},{float(lat)-delta},{float(lon)+delta},{float(lat)+delta}"
+        r = requests.get(f'https://hiking.waymarkedtrails.org/api/v1/list/by_area?bbox={bbox}&limit=10', timeout=10)
+        if r.ok:
+            data = r.json()
+            results.extend(data.get('results', []))
+    except Exception as e:
+        print(f'[WAYMARKED ERROR] bbox: {e}', flush=True)
+    # Search by name
+    if query:
+        try:
+            r = requests.get(f'https://hiking.waymarkedtrails.org/api/v1/list/search?query={query}&limit=5', timeout=10)
+            if r.ok:
+                data = r.json()
+                results.extend(data.get('results', []))
+        except Exception as e:
+            print(f'[WAYMARKED ERROR] search: {e}', flush=True)
+    # Deduplicate
+    seen = set()
+    unique = []
+    for t in results:
+        if t.get('id') not in seen:
+            seen.add(t.get('id'))
+            unique.append(t)
+    return jsonify({'trails': unique[:15]})
+
 @app.route('/api/activities')
 def api_activities():
     data = ridb_get('/activities', {'limit': 100})

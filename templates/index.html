@@ -17,6 +17,12 @@
             <option value="">All Activities</option>
         </select>
     </div>
+    <div class="facility-type-filters">
+        <button class="filter-btn active" data-type="all" onclick="setFacilityFilter('all', this)">All</button>
+        <button class="filter-btn" data-type="campground" onclick="setFacilityFilter('campground', this)">🏕️ Campgrounds</button>
+        <button class="filter-btn" data-type="trailhead" onclick="setFacilityFilter('trailhead', this)">🥾 Trailheads</button>
+        <button class="filter-btn" data-type="dayuse" onclick="setFacilityFilter('dayuse', this)">☀️ Day Use</button>
+    </div>
 </section>
 <section class="results-section">
     <div class="results-container">

@@ -1,3 +1,38 @@
+// Facility type filter state
+let currentFacilityFilter = 'all';
+let lastSearchResults = [];
+
+function setFacilityFilter(type, btn) {
+    currentFacilityFilter = type;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    if (lastSearchResults.length) {
+        const filtered = filterByType(lastSearchResults, type);
+        renderResults(filtered, filtered.length, true);
+    }
+}
+
+function classifyFacilityType(type) {
+    if (!type) return 'other';
+    const t = type.toLowerCase();
+    if (t.includes('campground') || t.includes('camping')) return 'campground';
+    if (t.includes('trailhead') || t.includes('trail')) return 'trailhead';
+    if (t.includes('day use') || t.includes('picnic') || t.includes('day-use')) return 'dayuse';
+    return 'other';
+}
+
+function filterByType(results, type) {
+    if (type === 'all') return results;
+    return results.filter(r => classifyFacilityType(r.type) === type);
+}
+
+function getTypeBadgeHtml(type) {
+    const cls = classifyFacilityType(type);
+    const labels = { campground: '🏕️ Campground', trailhead: '🥾 Trailhead', dayuse: '☀️ Day Use', other: '📍 Facility' };
+    const classes = { campground: 'type-badge-campground', trailhead: 'type-badge-trailhead', dayuse: 'type-badge-dayuse', other: 'type-badge-other' };
+    return `<span class="type-badge ${classes[cls]}">${labels[cls]}</span>`;
+}
+
 // Init map
 mainMap = initMap('map');
 
@@ -44,7 +79,9 @@ async function doSearch() {
     try {
         const res = await fetch('/api/search?' + params);
         const data = await res.json();
-        renderResults(data.results || [], data.total || 0);
+        lastSearchResults = data.results || [];
+        const filtered = filterByType(lastSearchResults, currentFacilityFilter);
+        renderResults(filtered, data.total || 0);
     } catch(e) {
         list.innerHTML = `<p class="error">Search failed: ${e.message}</p>`;
     }
@@ -64,7 +101,9 @@ function searchNearMe() {
         try {
             const res = await fetch('/api/search?' + params);
             const data = await res.json();
-            renderResults(data.results || [], data.total || 0);
+            lastSearchResults = data.results || [];
+            const filtered = filterByType(lastSearchResults, currentFacilityFilter);
+            renderResults(filtered, data.total || 0);
         } catch(e) {
             list.innerHTML = `<p class="error">Search failed: ${e.message}</p>`;
         }
@@ -81,7 +120,7 @@ const weatherDescs = {
     95:'Thunderstorm ⛈', 96:'Thunderstorm ⛈', 99:'Thunderstorm ⛈'
 };
 
-function renderResults(results, total) {
+function renderResults(results, total, skipWeather) {
     const list = document.getElementById('results-list');
     if (!results.length) {
         list.innerHTML = '<p class="placeholder-text">No results found. Try a different search.</p>';
@@ -101,6 +140,7 @@ function renderResults(results, total) {
                 </div>
                 <div class="rc-status-row">
                     <span class="badge ${openClass}">${openLabel}</span>
+                    ${getTypeBadgeHtml(r.type)}
                 </div>
                 <h3><a href="/facility/${r.id}">${r.name}</a></h3>
                 <div class="result-meta">
@@ -113,9 +153,11 @@ function renderResults(results, total) {
     addMarkers(results);
     
     // Batch fetch weather for all results with lat/lon
-    const withCoords = results.filter(r => r.lat && r.lon);
-    if (withCoords.length) {
-        fetchBatchWeather(withCoords);
+    if (!skipWeather) {
+        const withCoords = results.filter(r => r.lat && r.lon);
+        if (withCoords.length) {
+            fetchBatchWeather(withCoords);
+        }
     }
 }
 

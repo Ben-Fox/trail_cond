@@ -155,7 +155,15 @@ async function loadFacility() {
                 <div class="facility-sidebar">
                     <div class="card">
                         <h2>${SVG.mapPin} Location</h2>
-                        <div id="detail-map" style="height:250px;border-radius:8px;"></div>
+                        <div id="detail-map" style="height:300px;border-radius:8px;"></div>
+                        <div class="trail-overlay-toggle">
+                            <input type="checkbox" id="trail-overlay-toggle">
+                            <label for="trail-overlay-toggle">Show hiking trails overlay</label>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h2>🥾 Nearby Trails</h2>
+                        <div id="nearby-trails"><p style="color:#888;font-size:0.85em;">Loading...</p></div>
                     </div>
                     <div class="card">
                         <h2>${SVG.sun} Current Weather</h2>
@@ -168,8 +176,37 @@ async function loadFacility() {
         `;
         
         if (data.lat && data.lon) {
-            const map = initMap('detail-map', data.lat, data.lon, 12);
-            L.marker([data.lat, data.lon]).addTo(map).bindPopup(data.name);
+            const map = initMap('detail-map', data.lat, data.lon, 13);
+            const color = ({'Campground':'#28a745','Trailhead':'#fd7e14','Day Use Area':'#007bff'}[data.type]) || '#6c757d';
+            L.circleMarker([data.lat, data.lon], {radius:10, fillColor:color, color:'#fff', weight:2, fillOpacity:0.85}).addTo(map).bindPopup(data.name);
+            
+            // Add waymarked trails overlay by default
+            addWaymarkedOverlay(map);
+            
+            // Toggle handler
+            const toggle = document.getElementById('trail-overlay-toggle');
+            if (toggle) {
+                toggle.checked = true;
+                toggle.addEventListener('change', function() {
+                    if (this.checked) addWaymarkedOverlay(map);
+                    else removeWaymarkedOverlay(map);
+                });
+            }
+            
+            // Load nearby trails from Waymarked Trails API
+            loadNearbyTrails(map, data.lat, data.lon, data.name).then(trails => {
+                const container = document.getElementById('nearby-trails');
+                if (trails && trails.length) {
+                    container.innerHTML = trails.slice(0, 8).map(t => {
+                        let details = [];
+                        if (t.group) details.push(t.group);
+                        return `<div class="nearby-trail-item">${t.name || 'Unnamed trail'}${details.length ? ' <span style="color:#888;font-size:0.8em">(' + details.join(', ') + ')</span>' : ''}</div>`;
+                    }).join('');
+                } else {
+                    container.innerHTML = '<p style="color:#888;font-size:0.85em;">No nearby trails found.</p>';
+                }
+            });
+            
             loadWeather(data.lat, data.lon);
             loadWeatherInference(data.lat, data.lon);
         }
