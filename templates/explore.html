@@ -33,13 +33,13 @@
             </button>
             <span id="resultCount" class="result-count"></span>
         </div>
+        <div id="mapOverlayControls" class="map-overlay-controls">
+            <label class="map-toggle"><input type="checkbox" id="weatherOverlayToggle"> Weather Radar</label>
+            <label class="map-toggle"><input type="checkbox" id="precipOverlayToggle"> Precipitation</label>
+            <label class="map-toggle"><input type="checkbox" id="trailOverlayToggle"> Trail Routes</label>
+        </div>
         <div id="mapView" class="map-view">
             <div id="map" class="explore-map-full"></div>
-            <div id="mapControls" class="map-controls">
-                <label class="map-toggle"><input type="checkbox" id="weatherOverlayToggle"> Weather Radar</label>
-                <label class="map-toggle"><input type="checkbox" id="precipOverlayToggle"> Precipitation</label>
-                <label class="map-toggle"><input type="checkbox" id="trailOverlayToggle"> Trail Routes</label>
-            </div>
             <button id="searchMapBtn" class="btn-search-map" style="display:none;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
                 Search This Area
@@ -147,6 +147,7 @@ function difficultyLabel(sac) {
 function showView(view) {
     currentView = view;
     document.getElementById('mapView').style.display = view === 'map' ? 'block' : 'none';
+    document.getElementById('mapOverlayControls').style.display = view === 'map' ? 'flex' : 'none';
     document.getElementById('listView').style.display = view === 'list' ? 'block' : 'none';
     document.getElementById('toggleMap').classList.toggle('active', view === 'map');
     document.getElementById('toggleList').classList.toggle('active', view === 'list');

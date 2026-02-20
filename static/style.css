@@ -548,19 +548,16 @@ body {
     border: 1px solid rgba(0,0,0,0.06);
 }
 
-/* Map overlay controls */
-.map-controls {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    z-index: 1000;
-    background: white;
-    border-radius: 10px;
-    padding: 10px 14px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+/* Map overlay controls — above map */
+.map-overlay-controls {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    gap: 1.2rem;
+    padding: 8px 14px;
+    background: var(--cream);
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
 }
 .map-toggle {
     display: flex;
