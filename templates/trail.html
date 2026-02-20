@@ -108,20 +108,20 @@ async function loadTrail() {
         </form>
     </div>`;
     
-    // === ELEVATION PROFILE ===
-    if (trail.geometry && trail.geometry.length > 2) {
-        html += `<div class="section-block" id="elevationSection">
-            <h2>Elevation Profile</h2>
-            <p class="muted">Loading elevation data...</p>
-        </div>`;
-    }
-    
     // === MAP (BOTTOM) ===
     if (trail.lat && trail.lon) {
         html += `<div class="section-block">
             <h2>Trail Map</h2>
             <div id="trailMap" class="trail-map"></div>
             <label class="toggle-label"><input type="checkbox" id="overlayToggle" checked> Show hiking trails overlay</label>
+        </div>`;
+    }
+    
+    // === ELEVATION PROFILE (below map) ===
+    if (trail.geometry && trail.geometry.length > 2) {
+        html += `<div class="section-block" id="elevationSection">
+            <h2>Elevation Profile</h2>
+            <p class="muted">Loading elevation data...</p>
         </div>`;
     }
     
