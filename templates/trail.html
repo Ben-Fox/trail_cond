@@ -13,6 +13,20 @@ const FID = `${OSM_TYPE}/${OSM_ID}`;
 const REPORT_KEY = `${OSM_TYPE}:${OSM_ID}`;
 const weatherDescriptions = {0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Foggy',48:'Rime fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Heavy freezing rain',71:'Light snow',73:'Snow',75:'Heavy snow',77:'Snow grains',80:'Light showers',81:'Showers',82:'Heavy showers',85:'Snow showers',86:'Heavy snow showers',95:'Thunderstorm',96:'Thunderstorm w/ hail',99:'Severe thunderstorm'};
 
+function weatherIcon(code) {
+    if (code === 0 || code === 1) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#e9c46a" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+    if (code === 2) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#b08968" stroke-width="2"><circle cx="8" cy="10" r="4" stroke="#e9c46a"/><line x1="8" y1="4" x2="8" y2="5" stroke="#e9c46a"/><line x1="3" y1="10" x2="4" y2="10" stroke="#e9c46a"/><path d="M18 10h-1.26A5 5 0 0 0 12 6a4.97 4.97 0 0 0-3 1"/><path d="M18 10a3 3 0 1 1 0 6H10"/></svg>';
+    if (code === 3) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 1 0 0-10z"/></svg>';
+    if (code >= 45 && code <= 48) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 1 0 0-10z"/><line x1="4" y1="16" x2="8" y2="16" opacity=".5"/><line x1="10" y1="16" x2="14" y2="16" opacity=".5"/></svg>';
+    if (code >= 51 && code <= 55) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#4a90d9" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 1 0 0-10z" stroke="#888"/><line x1="8" y1="22" x2="8" y2="20"/><line x1="12" y1="22" x2="12" y2="20"/></svg>';
+    if (code >= 61 && code <= 67) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#4a90d9" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 1 0 0-10z" stroke="#888"/><line x1="7" y1="22" x2="7" y2="18"/><line x1="11" y1="22" x2="11" y2="18"/><line x1="15" y1="22" x2="15" y2="18"/></svg>';
+    if (code >= 71 && code <= 77) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#7b9ec4" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 1 0 0-10z" stroke="#888"/><circle cx="8" cy="21" r="1" fill="#7b9ec4"/><circle cx="12" cy="19" r="1" fill="#7b9ec4"/><circle cx="16" cy="21" r="1" fill="#7b9ec4"/></svg>';
+    if (code >= 80 && code <= 82) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#4a90d9" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 1 0 0-10z" stroke="#555"/><line x1="7" y1="22" x2="8" y2="18"/><line x1="11" y1="22" x2="12" y2="18"/><line x1="15" y1="22" x2="16" y2="18"/></svg>';
+    if (code >= 85 && code <= 86) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#7b9ec4" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 1 0 0-10z" stroke="#555"/><circle cx="8" cy="20" r="1" fill="#7b9ec4"/><circle cx="12" cy="22" r="1" fill="#7b9ec4"/><circle cx="16" cy="20" r="1" fill="#7b9ec4"/></svg>';
+    if (code >= 95) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 1 0 0-10z"/><polyline points="13 16 11 20 15 20 13 24" stroke="#e9c46a" stroke-width="2"/></svg>';
+    return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><circle cx="12" cy="12" r="5"/></svg>';
+}
+
 function difficultyLabel(sac) {
     const m = {'hiking':'Easy','mountain_hiking':'Moderate','demanding_mountain_hiking':'Hard','alpine_hiking':'Expert','demanding_alpine_hiking':'Expert+','difficult_alpine_hiking':'Extreme'};
     return m[sac] || '';
@@ -152,13 +166,15 @@ async function loadTrail() {
             
             // 7-day history
             whtml += `<div class="weather-history"><h3>7-Day History</h3><div class="history-grid">`;
+            const codes = w.daily.codes || [];
             for (let i = 0; i < (w.daily.dates||[]).length; i++) {
                 const d = w.daily.dates[i];
                 const hi = w.daily.temp_max[i] != null ? Math.round(w.daily.temp_max[i]*9/5+32) : '--';
                 const lo = w.daily.temp_min[i] != null ? Math.round(w.daily.temp_min[i]*9/5+32) : '--';
                 const precip = w.daily.precip[i] || 0;
                 const snow = w.daily.snow[i] || 0;
-                whtml += `<div class="history-day"><div class="hd-date">${d.slice(5)}</div><div class="hd-temp">${hi}/${lo}°F</div>${precip > 0 ? `<div class="hd-precip">${precip}mm rain</div>` : ''}${snow > 0 ? `<div class="hd-snow">${snow}cm snow</div>` : ''}</div>`;
+                const code = codes[i] != null ? codes[i] : 0;
+                whtml += `<div class="history-day">${weatherIcon(code)}<div class="hd-date">${d.slice(5)}</div><div class="hd-temp">${hi}/${lo}°F</div>${precip > 0 ? `<div class="hd-precip">${precip}mm rain</div>` : ''}${snow > 0 ? `<div class="hd-snow">${snow}cm snow</div>` : ''}</div>`;
             }
             whtml += `</div></div>`;
             

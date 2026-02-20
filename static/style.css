@@ -525,3 +525,6 @@ body {
     transition: color 0.2s;
 }
 .back-link:hover { color: var(--green); }
+
+/* Weather icons in history */
+.w-icon { width: 28px; height: 28px; margin-bottom: 4px; }
