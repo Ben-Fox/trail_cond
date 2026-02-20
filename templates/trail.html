@@ -131,8 +131,11 @@ async function loadTrail() {
     document.getElementById('trailContent').innerHTML = html;
     
     // Init map
+    let trailMap = null;
+    let elevMarker = null;
     if (trail.lat && trail.lon) {
         const map = L.map('trailMap').setView([trail.lat, trail.lon], 13);
+        trailMap = map;
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {attribution:'&copy; OSM &copy; CARTO', subdomains:'abcd', maxZoom:20}).addTo(map);
         
         if (trail.geometry && trail.geometry.length > 1) {
@@ -191,50 +194,119 @@ async function loadTrail() {
                 const ch = h - pad.top - pad.bottom;
                 const range = maxE - minE || 1;
                 
-                // Background
-                ctx.fillStyle = '#fdfbf7';
-                ctx.fillRect(0, 0, w, h);
-                
-                // Grid lines
-                ctx.strokeStyle = '#e8e0d4';
-                ctx.lineWidth = 1;
-                for (let i = 0; i <= 4; i++) {
-                    const y = pad.top + (ch / 4) * i;
+                function drawChart(highlightIdx) {
+                    ctx.clearRect(0, 0, w, h);
+                    
+                    // Background
+                    ctx.fillStyle = '#fdfbf7';
+                    ctx.fillRect(0, 0, w, h);
+                    
+                    // Grid lines
+                    ctx.strokeStyle = '#e8e0d4';
+                    ctx.lineWidth = 1;
+                    for (let i = 0; i <= 4; i++) {
+                        const y = pad.top + (ch / 4) * i;
+                        ctx.beginPath();
+                        ctx.moveTo(pad.left, y);
+                        ctx.lineTo(w - pad.right, y);
+                        ctx.stroke();
+                        
+                        const elevVal = Math.round((maxE - (range / 4) * i) * 3.281);
+                        ctx.fillStyle = '#b08968';
+                        ctx.font = '11px Nunito, sans-serif';
+                        ctx.textAlign = 'right';
+                        ctx.fillText(`${elevVal}ft`, pad.left - 5, y + 4);
+                    }
+                    
+                    // Fill area
                     ctx.beginPath();
-                    ctx.moveTo(pad.left, y);
-                    ctx.lineTo(w - pad.right, y);
+                    ctx.moveTo(pad.left, pad.top + ch);
+                    for (let i = 0; i < elev.length; i++) {
+                        const x = pad.left + (i / (elev.length - 1)) * cw;
+                        const y = pad.top + ch - ((elev[i] - minE) / range) * ch;
+                        ctx.lineTo(x, y);
+                    }
+                    ctx.lineTo(pad.left + cw, pad.top + ch);
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(45, 106, 79, 0.15)';
+                    ctx.fill();
+                    
+                    // Line
+                    ctx.beginPath();
+                    for (let i = 0; i < elev.length; i++) {
+                        const x = pad.left + (i / (elev.length - 1)) * cw;
+                        const y = pad.top + ch - ((elev[i] - minE) / range) * ch;
+                        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                    }
+                    ctx.strokeStyle = '#2d6a4f';
+                    ctx.lineWidth = 2.5;
                     ctx.stroke();
                     
-                    const elevVal = Math.round((maxE - (range / 4) * i) * 3.281);
-                    ctx.fillStyle = '#b08968';
-                    ctx.font = '11px Nunito, sans-serif';
-                    ctx.textAlign = 'right';
-                    ctx.fillText(`${elevVal}ft`, pad.left - 5, y + 4);
+                    // Highlight point
+                    if (highlightIdx != null && highlightIdx >= 0 && highlightIdx < elev.length) {
+                        const hx = pad.left + (highlightIdx / (elev.length - 1)) * cw;
+                        const hy = pad.top + ch - ((elev[highlightIdx] - minE) / range) * ch;
+                        
+                        // Vertical line
+                        ctx.strokeStyle = '#c44536';
+                        ctx.lineWidth = 1.5;
+                        ctx.setLineDash([4, 3]);
+                        ctx.beginPath();
+                        ctx.moveTo(hx, pad.top);
+                        ctx.lineTo(hx, pad.top + ch);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                        
+                        // Dot
+                        ctx.beginPath();
+                        ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+                        ctx.fillStyle = '#c44536';
+                        ctx.fill();
+                        ctx.strokeStyle = 'white';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        
+                        // Label
+                        const ft = Math.round(elev[highlightIdx] * 3.281);
+                        ctx.fillStyle = '#333';
+                        ctx.font = 'bold 12px Nunito, sans-serif';
+                        ctx.textAlign = hx > w / 2 ? 'right' : 'left';
+                        ctx.fillText(`${ft} ft`, hx + (hx > w / 2 ? -10 : 10), hy - 10);
+                    }
                 }
                 
-                // Fill area
-                ctx.beginPath();
-                ctx.moveTo(pad.left, pad.top + ch);
-                for (let i = 0; i < elev.length; i++) {
-                    const x = pad.left + (i / (elev.length - 1)) * cw;
-                    const y = pad.top + ch - ((elev[i] - minE) / range) * ch;
-                    ctx.lineTo(x, y);
-                }
-                ctx.lineTo(pad.left + cw, pad.top + ch);
-                ctx.closePath();
-                ctx.fillStyle = 'rgba(45, 106, 79, 0.15)';
-                ctx.fill();
+                drawChart(null);
                 
-                // Line
-                ctx.beginPath();
-                for (let i = 0; i < elev.length; i++) {
-                    const x = pad.left + (i / (elev.length - 1)) * cw;
-                    const y = pad.top + ch - ((elev[i] - minE) / range) * ch;
-                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                // Interactive: mouse/touch on canvas → show point on map
+                function getIdxFromEvent(e) {
+                    const rect = canvas.getBoundingClientRect();
+                    const scaleX = w / rect.width;
+                    let clientX;
+                    if (e.touches) clientX = e.touches[0].clientX;
+                    else clientX = e.clientX;
+                    const mx = (clientX - rect.left) * scaleX;
+                    const relX = (mx - pad.left) / cw;
+                    return Math.max(0, Math.min(elev.length - 1, Math.round(relX * (elev.length - 1))));
                 }
-                ctx.strokeStyle = '#2d6a4f';
-                ctx.lineWidth = 2.5;
-                ctx.stroke();
+                
+                function showPoint(idx) {
+                    drawChart(idx);
+                    if (trailMap && sampled[idx]) {
+                        const pt = sampled[idx];
+                        if (elevMarker) trailMap.removeLayer(elevMarker);
+                        elevMarker = L.circleMarker([pt.lat, pt.lon], {
+                            radius: 8, color: '#c44536', fillColor: '#c44536', fillOpacity: 1, weight: 2, stroke: true, className: 'elev-marker'
+                        }).addTo(trailMap).bindPopup(`${Math.round(elev[idx] * 3.281)} ft`, {closeButton: false, offset: [0, -10]}).openPopup();
+                    }
+                }
+                
+                canvas.addEventListener('mousemove', e => showPoint(getIdxFromEvent(e)));
+                canvas.addEventListener('touchmove', e => { e.preventDefault(); showPoint(getIdxFromEvent(e)); }, {passive: false});
+                canvas.addEventListener('mouseleave', () => {
+                    drawChart(null);
+                    if (elevMarker && trailMap) { trailMap.removeLayer(elevMarker); elevMarker = null; }
+                });
+                canvas.style.cursor = 'crosshair';
             }
         } catch(e) {
             document.getElementById('elevationSection').innerHTML = '<h2>Elevation Profile</h2><p class="muted">Could not load elevation data</p>';
