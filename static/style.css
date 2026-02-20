@@ -360,3 +360,31 @@ body {
 .tag-type { background: var(--brown-light); color: #fff; font-size: 0.75rem; }
 .trail-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 1rem; }
 .trail-operator { color: var(--text-light); font-size: 0.9rem; }
+
+/* Trail marker clusters */
+.trail-cluster {
+    background: rgba(45, 106, 79, 0.7);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.trail-cluster div {
+    background: rgba(45, 106, 79, 0.9);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.trail-cluster span {
+    color: white;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+}
+.trail-cluster-medium div { width: 36px; height: 36px; }
+.trail-cluster-medium span { font-size: 14px; }
+.trail-cluster-large div { width: 44px; height: 44px; }
+.trail-cluster-large span { font-size: 16px; }

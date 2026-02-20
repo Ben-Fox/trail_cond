@@ -48,7 +48,7 @@ const US_STATES = {"AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","
 const sel = document.getElementById('stateFilter');
 Object.keys(US_STATES).sort().forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
 
-let map, markers = [], routeLayers = [];
+let map, markerCluster, routeLayers = [];
 let currentView = 'map'; // default to map
 let currentTrails = [];
 
@@ -56,12 +56,28 @@ function initMap() {
     if (map) return;
     map = L.map('map').setView([39.5, -98.5], 4);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OSM'}).addTo(map);
+    markerCluster = L.markerClusterGroup({
+        maxClusterRadius: 50,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        iconCreateFunction: function(cluster) {
+            const count = cluster.getChildCount();
+            let size = 'small';
+            if (count >= 50) size = 'large';
+            else if (count >= 10) size = 'medium';
+            return L.divIcon({
+                html: '<div><span>' + count + '</span></div>',
+                className: 'trail-cluster trail-cluster-' + size,
+                iconSize: L.point(40, 40)
+            });
+        }
+    });
+    map.addLayer(markerCluster);
     map.on('zoomend', onZoomChange);
 }
 
 function clearMarkers() {
-    markers.forEach(m => map.removeLayer(m));
-    markers = [];
+    if (markerCluster) markerCluster.clearLayers();
     routeLayers.forEach(l => map.removeLayer(l));
     routeLayers = [];
 }
@@ -212,9 +228,9 @@ function renderResults(trails) {
         </div>`;
         
         if (t.lat && t.lon) {
-            const m = L.circleMarker([t.lat, t.lon], {radius: 7, color: '#b08968', fillColor: '#b08968', fillOpacity: 0.8})
-                .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View</a>`).addTo(map);
-            markers.push(m);
+            const m = L.marker([t.lat, t.lon])
+                .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a>`);
+            markerCluster.addLayer(m);
             bounds.push([t.lat, t.lon]);
         }
     });
