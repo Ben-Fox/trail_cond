@@ -33,15 +33,19 @@ async function loadTrail() {
     
     let html = `<h1>${trail.name}</h1>`;
     
-    // Tags row
-    html += `<div class="trail-tags">`;
-    if (diff) html += `<span class="tag tag-diff">${diff}</span>`;
-    if (trail.surface) html += `<span class="tag">${trail.surface}</span>`;
-    if (distMi) html += `<span class="tag">${distMi} mi (${trail.distance_km} km)</span>`;
-    else if (distKm) html += `<span class="tag">${distKm}</span>`;
-    if (trail.access) html += `<span class="tag">Access: ${trail.access}</span>`;
-    if (trail.wheelchair) html += `<span class="tag">Wheelchair: ${trail.wheelchair}</span>`;
-    if (trail.network) html += `<span class="tag">${trail.network}</span>`;
+    // Trail info
+    const surfaceLabel = trail.surface ? trail.surface.charAt(0).toUpperCase() + trail.surface.slice(1) : '';
+    const typeMap = {'ground':'Dirt','dirt':'Dirt','earth':'Dirt','gravel':'Gravel','paved':'Paved','asphalt':'Paved','concrete':'Paved','compacted':'Compacted','fine_gravel':'Gravel','wood':'Boardwalk','grass':'Grass','sand':'Sand','rock':'Rock','paving_stones':'Paved'};
+    const trailType = trail.surface ? (typeMap[trail.surface.toLowerCase()] || surfaceLabel) : '';
+    
+    html += `<div class="trail-details-grid">`;
+    if (trailType) html += `<div class="trail-detail-item"><span class="detail-label">Trail Type</span><span class="detail-value">${trailType}</span></div>`;
+    if (diff) html += `<div class="trail-detail-item"><span class="detail-label">Difficulty</span><span class="detail-value">${diff}</span></div>`;
+    if (distMi) html += `<div class="trail-detail-item"><span class="detail-label">Length</span><span class="detail-value">${distMi} mi (${trail.distance_km} km)</span></div>`;
+    else if (distKm) html += `<div class="trail-detail-item"><span class="detail-label">Length</span><span class="detail-value">${distKm}</span></div>`;
+    if (trail.access) html += `<div class="trail-detail-item"><span class="detail-label">Access</span><span class="detail-value">${trail.access}</span></div>`;
+    if (trail.wheelchair) html += `<div class="trail-detail-item"><span class="detail-label">Wheelchair</span><span class="detail-value">${trail.wheelchair}</span></div>`;
+    if (trail.network) html += `<div class="trail-detail-item"><span class="detail-label">Network</span><span class="detail-value">${trail.network}</span></div>`;
     html += `</div>`;
     
     if (trail.desc) html += `<p class="trail-desc">${trail.desc}</p>`;
