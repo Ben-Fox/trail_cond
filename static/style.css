@@ -491,3 +491,17 @@ body {
     color: white;
 }
 .map-view { position: relative; }
+
+/* Back link */
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--brown);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.75rem;
+    transition: color 0.2s;
+}
+.back-link:hover { color: var(--green); }
