@@ -111,7 +111,7 @@ async function loadTrail() {
     // Init map
     if (trail.lat && trail.lon) {
         const map = L.map('trailMap').setView([trail.lat, trail.lon], 13);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/voyager/{z}/{x}/{y}{r}.png', {attribution:'&copy; OSM &copy; CARTO', subdomains:'abcd', maxZoom:20}).addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {attribution:'&copy; OSM &copy; CARTO', subdomains:'abcd', maxZoom:20}).addTo(map);
         
         if (trail.geometry && trail.geometry.length > 1) {
             const latlngs = trail.geometry.map(p => [p.lat, p.lon]);
