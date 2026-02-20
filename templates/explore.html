@@ -92,101 +92,143 @@ function initMap() {
     
     // Overlays
     const trailsOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.6, attribution:'Waymarked Trails'});
-    let conditionsLayer = L.layerGroup();
     let conditionsActive = false;
     let conditionsCache = {};
     let conditionsLoading = false;
+    let canvasOverlay = null;
     
-    const CONDITION_COLORS = {
-        'snowy': 'rgba(74, 144, 217, 0.3)',
-        'icy': 'rgba(196, 69, 54, 0.3)',
-        'muddy': 'rgba(127, 85, 57, 0.3)',
-        'wet': 'rgba(176, 137, 104, 0.25)',
-        'dry': 'rgba(45, 106, 79, 0.15)',
-        'clear': 'rgba(45, 106, 79, 0.1)',
+    // Condition severity for interpolation (0=dry, 1=wet, 2=muddy, 3=snowy, 4=icy)
+    const COND_SCORE = {clear: 0, dry: 0, wet: 1, muddy: 2, snowy: 3, icy: 4};
+    const COND_RGB = {
+        0: [82, 183, 136],   // dry/clear - green
+        1: [176, 137, 104],  // wet - tan
+        2: [127, 85, 57],    // muddy - brown
+        3: [74, 144, 217],   // snowy - blue
+        4: [196, 69, 54],    // icy - red
     };
-    const CONDITION_BORDERS = {
-        'snowy': 'rgba(74, 144, 217, 0.5)',
-        'icy': 'rgba(196, 69, 54, 0.5)',
-        'muddy': 'rgba(127, 85, 57, 0.4)',
-        'wet': 'rgba(176, 137, 104, 0.35)',
-        'dry': 'rgba(45, 106, 79, 0.2)',
-        'clear': 'rgba(45, 106, 79, 0.15)',
-    };
+    
+    function lerpColor(score) {
+        const lo = Math.floor(Math.max(0, Math.min(3, score)));
+        const hi = Math.min(4, lo + 1);
+        const t = score - lo;
+        const a = COND_RGB[lo], b = COND_RGB[hi];
+        return [
+            Math.round(a[0] + (b[0] - a[0]) * t),
+            Math.round(a[1] + (b[1] - a[1]) * t),
+            Math.round(a[2] + (b[2] - a[2]) * t),
+        ];
+    }
     
     async function loadConditionsGrid() {
         if (!conditionsActive || conditionsLoading) return;
         const zoom = map.getZoom();
-        if (zoom < 6) { conditionsLayer.clearLayers(); return; }
+        if (zoom < 5) {
+            if (canvasOverlay) map.removeLayer(canvasOverlay);
+            return;
+        }
         
         conditionsLoading = true;
         const bounds = map.getBounds();
         const s = bounds.getSouth(), n = bounds.getNorth();
         const w = bounds.getWest(), e = bounds.getEast();
+        // Pad bounds slightly for smoother edges
+        const latPad = (n - s) * 0.1, lonPad = (e - w) * 0.1;
+        const ps = s - latPad, pn = n + latPad, pw = w - lonPad, pe = e + lonPad;
         
-        // Grid size adapts to zoom: fewer cells when zoomed out, more when zoomed in
-        const cols = Math.min(6, Math.max(3, zoom - 4));
-        const rows = Math.min(5, Math.max(2, zoom - 5));
-        const latStep = (n - s) / rows;
-        const lonStep = (e - w) / cols;
+        // Denser grid: more sample points
+        const gridCols = Math.min(10, Math.max(4, zoom - 2));
+        const gridRows = Math.min(8, Math.max(3, zoom - 3));
+        const latStep = (pn - ps) / (gridRows - 1);
+        const lonStep = (pe - pw) / (gridCols - 1);
         
-        const points = [];
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                const lat = s + latStep * (r + 0.5);
-                const lon = w + lonStep * (c + 0.5);
+        // Build grid of sample points
+        const grid = [];
+        for (let r = 0; r < gridRows; r++) {
+            grid[r] = [];
+            for (let c = 0; c < gridCols; c++) {
+                const lat = ps + latStep * r;
+                const lon = pw + lonStep * c;
                 const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
-                points.push({lat, lon, r, c, key,
-                    south: s + latStep * r, north: s + latStep * (r + 1),
-                    west: w + lonStep * c, east: w + lonStep * (c + 1)
-                });
+                grid[r][c] = {lat, lon, key, score: 0, reasons: []};
             }
         }
         
         // Fetch weather for uncached points
-        const uncached = points.filter(p => !conditionsCache[p.key]);
+        const allPts = grid.flat();
+        const uncached = allPts.filter(p => !conditionsCache[p.key]);
         if (uncached.length > 0) {
-            try {
-                // Fetch in parallel batches of 5
-                const batches = [];
-                for (let i = 0; i < uncached.length; i += 5) {
-                    batches.push(uncached.slice(i, i + 5));
-                }
-                for (const batch of batches) {
-                    const fetches = batch.map(p =>
-                        fetch(`/api/weather/history?lat=${p.lat.toFixed(4)}&lon=${p.lon.toFixed(4)}`)
-                            .then(r => r.json())
-                            .then(data => { conditionsCache[p.key] = data.inference || {condition: 'clear'}; })
-                            .catch(() => { conditionsCache[p.key] = {condition: 'clear'}; })
-                    );
-                    await Promise.all(fetches);
-                }
-            } catch(e) {}
+            const batches = [];
+            for (let i = 0; i < uncached.length; i += 6) batches.push(uncached.slice(i, i + 6));
+            for (const batch of batches) {
+                await Promise.all(batch.map(p =>
+                    fetch(`/api/weather/history?lat=${p.lat.toFixed(4)}&lon=${p.lon.toFixed(4)}`)
+                        .then(r => r.json())
+                        .then(data => { conditionsCache[p.key] = data.inference || {condition: 'clear', reasons: []}; })
+                        .catch(() => { conditionsCache[p.key] = {condition: 'clear', reasons: []}; })
+                ));
+            }
         }
         
-        // Draw polygons
-        conditionsLayer.clearLayers();
-        for (const p of points) {
-            const inf = conditionsCache[p.key];
-            if (!inf) continue;
-            const cond = inf.condition || 'clear';
-            const rect = L.rectangle(
-                [[p.south, p.west], [p.north, p.east]],
-                {
-                    fillColor: CONDITION_COLORS[cond] || CONDITION_COLORS['clear'],
-                    fillOpacity: 1,
-                    color: CONDITION_BORDERS[cond] || CONDITION_BORDERS['clear'],
-                    weight: 1,
-                    opacity: 0.6,
-                }
-            );
-            const label = cond.charAt(0).toUpperCase() + cond.slice(1);
-            const reasons = (inf.reasons || []).join('; ');
-            rect.bindPopup(`<strong>${label}</strong><br><small>${reasons}</small>`, {closeButton: false});
-            rect.on('mouseover', function() { this.openPopup(); });
-            rect.on('mouseout', function() { this.closePopup(); });
-            conditionsLayer.addLayer(rect);
+        // Assign scores from cache
+        for (let r = 0; r < gridRows; r++) {
+            for (let c = 0; c < gridCols; c++) {
+                const inf = conditionsCache[grid[r][c].key] || {condition: 'clear'};
+                grid[r][c].score = COND_SCORE[inf.condition] ?? 0;
+                grid[r][c].reasons = inf.reasons || [];
+            }
         }
+        
+        // Render interpolated canvas
+        const canvasW = 300, canvasH = 200;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasW;
+        canvas.height = canvasH;
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.createImageData(canvasW, canvasH);
+        
+        for (let py = 0; py < canvasH; py++) {
+            for (let px = 0; px < canvasW; px++) {
+                // Map pixel to grid position (float)
+                const gr = (py / canvasH) * (gridRows - 1);
+                const gc = (px / canvasW) * (gridCols - 1);
+                
+                // Bilinear interpolation
+                const r0 = Math.floor(gr), r1 = Math.min(gridRows - 1, r0 + 1);
+                const c0 = Math.floor(gc), c1 = Math.min(gridCols - 1, c0 + 1);
+                const tr = gr - r0, tc = gc - c0;
+                
+                const s00 = grid[r0][c0].score;
+                const s01 = grid[r0][c1].score;
+                const s10 = grid[r1][c0].score;
+                const s11 = grid[r1][c1].score;
+                const score = s00 * (1 - tr) * (1 - tc) + s01 * (1 - tr) * tc + s10 * tr * (1 - tc) + s11 * tr * tc;
+                
+                const rgb = lerpColor(score);
+                const idx = (py * canvasW + px) * 4;
+                // Flip vertically (canvas y=0 is top, but lat increases upward)
+                const fpy = canvasH - 1 - py;
+                const fidx = (fpy * canvasW + px) * 4;
+                imgData.data[fidx] = rgb[0];
+                imgData.data[fidx + 1] = rgb[1];
+                imgData.data[fidx + 2] = rgb[2];
+                imgData.data[fidx + 3] = 90; // transparency
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+        
+        // Apply gaussian-like blur for smoother look
+        ctx.filter = 'blur(8px)';
+        ctx.drawImage(canvas, 0, 0);
+        ctx.filter = 'none';
+        
+        // Remove old overlay
+        if (canvasOverlay) map.removeLayer(canvasOverlay);
+        
+        // Add as image overlay
+        const imgUrl = canvas.toDataURL();
+        canvasOverlay = L.imageOverlay(imgUrl, [[ps, pw], [pn, pe]], {opacity: 0.55, interactive: false});
+        canvasOverlay.addTo(map);
+        
         conditionsLoading = false;
     }
     
@@ -194,10 +236,9 @@ function initMap() {
         conditionsActive = this.checked;
         document.getElementById('conditionsLegend').style.display = this.checked ? 'flex' : 'none';
         if (this.checked) {
-            conditionsLayer.addTo(map);
             loadConditionsGrid();
         } else {
-            map.removeLayer(conditionsLayer);
+            if (canvasOverlay) map.removeLayer(canvasOverlay);
         }
     });
     
