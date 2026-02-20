@@ -1,48 +1,120 @@
 {% extends "base.html" %}
-{% block title %}Explore — TrailCondish{% endblock %}
+{% block title %}Find Trails — Trail Condish{% endblock %}
 {% block content %}
-<section class="section" style="padding-top:1.5rem">
+<section class="explore-header">
     <div class="container">
-        <h2 class="section-title" style="margin-bottom:1rem">Explore Trails &amp; Campgrounds</h2>
+        <h1>Find Trails</h1>
         <div class="search-bar">
-            <input type="text" id="search-query" placeholder="Search by name or keyword...">
-            <select id="search-state">
+            <input type="text" id="searchInput" placeholder="Search trails or areas...">
+            <select id="stateFilter">
                 <option value="">All States</option>
             </select>
-            <button class="btn btn-primary" onclick="doSearch()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                Search
-            </button>
-            <button class="btn btn-outline btn-sm" onclick="nearMe()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <button id="nearMeBtn" class="btn btn-secondary" title="Near Me">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 0110 10 10 10 0 01-10 10A10 10 0 012 12 10 10 0 0112 2z" opacity=".3"/><path d="M12 8v0m0 8v0m-4-4h0m8 0h0"/></svg>
                 Near Me
             </button>
+            <button id="searchBtn" class="btn btn-primary">Search</button>
         </div>
-        <div class="filter-bar">
-            <button class="btn btn-outline btn-sm active" data-filter="all" onclick="setFilter('all',this)">All</button>
-            <button class="btn btn-outline btn-sm" data-filter="campground" onclick="setFilter('campground',this)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21l9-18 9 18H3z"/><path d="M12 3v18"/></svg>
-                Campgrounds
-            </button>
-            <button class="btn btn-outline btn-sm" data-filter="trailhead" onclick="setFilter('trailhead',this)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19l4-14"/><path d="M8 5l8 0"/><path d="M12 5v14"/><path d="M20 19l-4-14"/></svg>
-                Trailheads
-            </button>
-            <button class="btn btn-outline btn-sm" data-filter="day use" onclick="setFilter('day use',this)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-                Day Use
-            </button>
+    </div>
+</section>
+<section class="explore-body">
+    <div class="container explore-layout">
+        <div id="resultsList" class="results-list">
+            <p class="muted">Search for trails to get started</p>
         </div>
-        <div class="results-layout">
-            <div class="results-list" id="results-list">
-                <div class="loading" id="results-loading" style="display:none"><div class="spinner"></div><br>Searching...</div>
-                <div id="results-empty" style="text-align:center;padding:2rem;color:var(--gray)">Search for trails and campgrounds above, or use "Near Me" to find places nearby.</div>
-            </div>
-            <div id="explore-map"></div>
-        </div>
+        <div id="map" class="explore-map"></div>
     </div>
 </section>
 {% endblock %}
 {% block scripts %}
-<script src="/static/js/explore.js"></script>
+<script>
+const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
+const sel = document.getElementById('stateFilter');
+US_STATES.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+
+const map = L.map('map').setView([39.5, -98.5], 4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OSM'}).addTo(map);
+let markers = [];
+
+function clearMarkers() { markers.forEach(m => map.removeLayer(m)); markers = []; }
+
+function badgeColor(b) { return b === 'red' ? '#c44536' : b === 'yellow' ? '#b08968' : '#2d6a4f'; }
+function badgeLabel(b) { return b === 'red' ? 'Poor' : b === 'yellow' ? 'Fair' : 'Good'; }
+
+function weatherCode(c) {
+    if (c <= 3) return 'Clear'; if (c <= 49) return 'Foggy'; if (c <= 69) return 'Rainy';
+    if (c <= 79) return 'Snowy'; if (c <= 82) return 'Showers'; return 'Stormy';
+}
+
+async function doSearch() {
+    const q = document.getElementById('searchInput').value;
+    const state = document.getElementById('stateFilter').value;
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (state) params.set('state', state);
+    
+    document.getElementById('resultsList').innerHTML = '<p class="muted">Searching...</p>';
+    const res = await fetch('/api/search?' + params);
+    const trails = await res.json();
+    if (trails.error) { document.getElementById('resultsList').innerHTML = '<p class="muted">Error searching</p>'; return; }
+    if (!trails.length) { document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found</p>'; return; }
+    
+    // Batch weather
+    const locs = trails.filter(t => t.lat && t.lon).map(t => `${t.lat},${t.lon}`).join('|');
+    let weatherMap = {};
+    if (locs) {
+        try {
+            const wr = await fetch('/api/weather/batch?locations=' + encodeURIComponent(locs));
+            const wd = await wr.json();
+            wd.forEach(w => { weatherMap[`${w.lat},${w.lon}`] = w; });
+        } catch(e) {}
+    }
+    
+    clearMarkers();
+    const bounds = [];
+    let html = '';
+    trails.forEach(t => {
+        const w = weatherMap[`${t.lat},${t.lon}`] || {};
+        const tempF = w.temp_c != null ? Math.round(w.temp_c * 9/5 + 32) : '--';
+        const wDesc = w.weathercode != null ? weatherCode(w.weathercode) : '';
+        // Simple badge: snowy conditions from weather code
+        let badge = 'green', badgeTxt = 'Good';
+        if (w.weathercode >= 70) { badge = 'red'; badgeTxt = 'Snowy'; }
+        else if (w.weathercode >= 50) { badge = 'yellow'; badgeTxt = 'Wet'; }
+        
+        html += `<div class="trail-card" onclick="window.location='/trail/${t.id}'">
+            <div class="tc-badge" style="background:${badgeColor(badge)}">${badgeTxt}</div>
+            <div class="tc-temp">${tempF}°F</div>
+            <h3 class="tc-name">${t.name}</h3>
+            <p class="tc-loc">${t.city ? t.city + ', ' : ''}${t.state || ''}</p>
+            <a href="/trail/${t.id}" class="tc-link">View Trail</a>
+        </div>`;
+        
+        if (t.lat && t.lon) {
+            const m = L.circleMarker([t.lat, t.lon], {radius: 8, color: '#b08968', fillColor: '#b08968', fillOpacity: 0.8})
+                .bindPopup(`<b>${t.name}</b><br><a href="/trail/${t.id}">View</a>`).addTo(map);
+            markers.push(m);
+            bounds.push([t.lat, t.lon]);
+        }
+    });
+    document.getElementById('resultsList').innerHTML = html;
+    if (bounds.length) map.fitBounds(bounds, {padding: [30, 30]});
+}
+
+document.getElementById('searchBtn').addEventListener('click', doSearch);
+document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+document.getElementById('nearMeBtn').addEventListener('click', () => {
+    if (!navigator.geolocation) return alert('Geolocation not supported');
+    navigator.geolocation.getCurrentPosition(pos => {
+        const params = new URLSearchParams({lat: pos.coords.latitude, lon: pos.coords.longitude});
+        document.getElementById('searchInput').value = '';
+        fetch('/api/search?' + params).then(r => r.json()).then(trails => {
+            // Reuse search display
+            document.getElementById('searchInput').value = `Near ${pos.coords.latitude.toFixed(2)}, ${pos.coords.longitude.toFixed(2)}`;
+            doSearch();
+        });
+    }, () => alert('Could not get location'));
+});
+</script>
 {% endblock %}

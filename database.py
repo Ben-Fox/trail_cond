@@ -15,33 +15,13 @@ def init_db():
         CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             facility_id TEXT NOT NULL,
-            facility_name TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'Good',
-            trail_condition TEXT DEFAULT '',
-            road_access TEXT DEFAULT '',
-            general_notes TEXT DEFAULT '',
-            date_visited TEXT DEFAULT '',
+            trail_condition TEXT,
+            trail_surface TEXT,
+            road_access TEXT,
+            general_notes TEXT,
+            date_visited TEXT,
             upvotes INTEGER DEFAULT 0,
             downvotes INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS standalone_reports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            facility_id TEXT DEFAULT '',
-            facility_name TEXT NOT NULL,
-            state TEXT DEFAULT '',
-            area_region TEXT DEFAULT '',
-            date_visited TEXT DEFAULT '',
-            overall_condition TEXT DEFAULT '',
-            cleanliness INTEGER DEFAULT 0,
-            trail_surface TEXT DEFAULT '',
-            road_access TEXT DEFAULT '',
-            crowding TEXT DEFAULT '',
-            water_availability TEXT DEFAULT '',
-            restroom_condition TEXT DEFAULT '',
-            general_notes TEXT DEFAULT '',
-            hazards TEXT DEFAULT '',
-            recommend TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS votes (

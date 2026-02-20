@@ -3,37 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}TrailCondish{% endblock %}</title>
+    <meta name="theme-color" content="#2d6a4f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <title>{% block title %}Trail Condish{% endblock %}</title>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="/static/style.css">
     {% block head %}{% endblock %}
 </head>
 <body>
     <nav class="navbar">
         <div class="nav-inner">
             <a href="/" class="nav-logo">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21l4-10 4 10"/><path d="M2 21l6-14 4 8"/><path d="M14 15l4-8 4 14"/></svg>
-                <span>TrailCondish</span>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l4-8 4 6 4-10 6 12"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+                Trail Condish
             </a>
             <div class="nav-links">
-                <a href="/">Home</a>
-                <a href="/explore">Explore</a>
-                <a href="/report">Submit Report</a>
+                <a href="/explore">Find Trails</a>
             </div>
-            <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            </button>
         </div>
     </nav>
-    <main>
-        {% block content %}{% endblock %}
-    </main>
+    <main>{% block content %}{% endblock %}</main>
     <footer class="site-footer">
-        <p>TrailCondish &mdash; Know Before You Go</p>
-        <p class="footer-credits">Data from Recreation.gov (RIDB) &bull; Weather by Open-Meteo &bull; Trails by OpenStreetMap/Waymarked Trails</p>
+        <p>Data from Recreation.gov, Open-Meteo &amp; OpenStreetMap/Waymarked Trails</p>
     </footer>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js');}
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

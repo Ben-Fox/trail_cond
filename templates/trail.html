@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Trail Details — Trail Condish{% endblock %}
+{% block content %}
+<div class="container trail-page" id="trailContent">
+    <p class="muted">Loading trail info...</p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const FID = '{{ facility_id }}';
+const weatherDescriptions = {0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Foggy',48:'Rime fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Heavy freezing rain',71:'Light snow',73:'Snow',75:'Heavy snow',77:'Snow grains',80:'Light showers',81:'Showers',82:'Heavy showers',85:'Snow showers',86:'Heavy snow showers',95:'Thunderstorm',96:'Thunderstorm w/ hail',99:'Severe thunderstorm'};
+
+async function loadTrail() {
+    const [trailRes, reportsRes] = await Promise.all([
+        fetch(`/api/trail/${FID}`),
+        fetch(`/api/trail/${FID}/reports`)
+    ]);
+    const trail = await trailRes.json();
+    const reports = await reportsRes.json();
+    if (trail.error) { document.getElementById('trailContent').innerHTML = '<p>Trail not found</p>'; return; }
+    
+    // Strip HTML tags from description
+    const tmp = document.createElement('div'); tmp.innerHTML = trail.desc || ''; const desc = tmp.textContent;
+    const tmp2 = document.createElement('div'); tmp2.innerHTML = trail.directions || ''; const dirs = tmp2.textContent;
+    
+    let html = `<h1>${trail.name}</h1>`;
+    html += `<p class="trail-location">${trail.city ? trail.city + ', ' : ''}${trail.state || ''}</p>`;
+    if (desc) html += `<p class="trail-desc">${desc}</p>`;
+    
+    // Map
+    if (trail.lat && trail.lon) {
+        html += `<div class="section-block"><h2>Map</h2>
+            <div id="trailMap" class="trail-map"></div>
+            <label class="toggle-label"><input type="checkbox" id="overlayToggle" checked> Show hiking trails overlay</label>
+        </div>`;
+    }
+    
+    // Weather conditions placeholder
+    html += `<div class="section-block" id="weatherSection"><h2>Trail Conditions</h2><p class="muted">Loading weather data...</p></div>`;
+    
+    // Directions
+    if (dirs) html += `<div class="section-block"><h2>Directions</h2><p>${dirs}</p></div>`;
+    
+    // Activities
+    if (trail.activities && trail.activities.length) {
+        html += `<div class="section-block"><h2>Activities</h2><div class="tag-list">${trail.activities.map(a => `<span class="tag">${a}</span>`).join('')}</div></div>`;
+    }
+    
+    // Photos
+    if (trail.media && trail.media.length) {
+        html += `<div class="section-block"><h2>Photos</h2><div class="photo-grid">${trail.media.map(m => `<img src="${m.url}" alt="${m.title}" loading="lazy">`).join('')}</div></div>`;
+    }
+    
+    // Reports
+    html += `<div class="section-block"><h2>Community Reports</h2><div id="reportsList">${renderReports(reports)}</div>`;
+    html += `<h3>Submit a Report</h3>
+        <form id="reportForm" class="report-form">
+            <label>Overall Condition<select name="trail_condition"><option>Great</option><option>Good</option><option>Fair</option><option>Poor</option></select></label>
+            <label>Trail Surface<select name="trail_surface"><option>Dry</option><option>Muddy</option><option>Snowy</option><option>Icy</option></select></label>
+            <label>Road Access<select name="road_access"><option>Open</option><option>Rough</option><option>Closed</option></select></label>
+            <label>Notes<textarea name="general_notes" rows="2" placeholder="Brief notes..."></textarea></label>
+            <label>Date Visited<input type="date" name="date_visited" value="${new Date().toISOString().slice(0,10)}"></label>
+            <button type="submit" class="btn btn-primary">Submit Report</button>
+        </form>
+    </div>`;
+    
+    document.getElementById('trailContent').innerHTML = html;
+    
+    // Init map
+    if (trail.lat && trail.lon) {
+        const map = L.map('trailMap').setView([trail.lat, trail.lon], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OSM'}).addTo(map);
+        L.marker([trail.lat, trail.lon]).addTo(map).bindPopup(trail.name).openPopup();
+        
+        const hikingOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.7, attribution:'Waymarked Trails'});
+        hikingOverlay.addTo(map);
+        
+        document.getElementById('overlayToggle').addEventListener('change', function() {
+            this.checked ? hikingOverlay.addTo(map) : map.removeLayer(hikingOverlay);
+        });
+    }
+    
+    // Load weather
+    if (trail.lat && trail.lon) {
+        const wr = await fetch(`/api/weather/history?lat=${trail.lat}&lon=${trail.lon}`);
+        const w = await wr.json();
+        if (!w.error) {
+            let whtml = '';
+            // Current
+            const tempF = Math.round(w.current.temp_c * 9/5 + 32);
+            const wDesc = weatherDescriptions[w.current.weathercode] || 'Unknown';
+            whtml += `<div class="weather-current"><span class="weather-temp">${tempF}°F</span> <span class="weather-desc">${wDesc}</span> <span class="weather-wind">Wind: ${w.current.windspeed} km/h</span></div>`;
+            
+            // Inference
+            const inf = w.inference;
+            whtml += `<div class="condition-badge" style="background:${inf.color}">${inf.condition.toUpperCase()}</div>`;
+            whtml += `<div class="condition-reasons">`;
+            inf.reasons.forEach(r => { whtml += `<p class="reason">${r}</p>`; });
+            whtml += `</div>`;
+            
+            // 7-day table
+            whtml += `<div class="weather-history"><h3>7-Day Weather History</h3><div class="history-grid">`;
+            for (let i = 0; i < (w.daily.dates||[]).length; i++) {
+                const d = w.daily.dates[i];
+                const hi = w.daily.temp_max[i] != null ? Math.round(w.daily.temp_max[i]*9/5+32) : '--';
+                const lo = w.daily.temp_min[i] != null ? Math.round(w.daily.temp_min[i]*9/5+32) : '--';
+                const precip = w.daily.precip[i] || 0;
+                const snow = w.daily.snow[i] || 0;
+                whtml += `<div class="history-day"><div class="hd-date">${d.slice(5)}</div><div class="hd-temp">${hi}/${lo}°F</div>${precip > 0 ? `<div class="hd-precip">${precip}mm</div>` : ''}${snow > 0 ? `<div class="hd-snow">${snow}cm snow</div>` : ''}</div>`;
+            }
+            whtml += `</div></div>`;
+            
+            document.getElementById('weatherSection').innerHTML = `<h2>Trail Conditions</h2>${whtml}`;
+        }
+    }
+    
+    // Report form
+    document.getElementById('reportForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const fd = new FormData(this);
+        const data = Object.fromEntries(fd);
+        await fetch(`/api/trail/${FID}/reports`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+        this.reset();
+        const rr = await fetch(`/api/trail/${FID}/reports`);
+        document.getElementById('reportsList').innerHTML = renderReports(await rr.json());
+    });
+}
+
+function renderReports(reports) {
+    if (!reports.length) return '<p class="muted">No reports yet. Be the first!</p>';
+    return reports.map(r => `<div class="report">
+        <div class="report-header">
+            <span class="report-condition tag">${r.trail_condition || ''}</span>
+            ${r.trail_surface ? `<span class="tag">${r.trail_surface}</span>` : ''}
+            ${r.road_access ? `<span class="tag">Road: ${r.road_access}</span>` : ''}
+            <span class="report-date">${r.date_visited || r.created_at?.slice(0,10) || ''}</span>
+        </div>
+        ${r.general_notes ? `<p class="report-notes">${r.general_notes}</p>` : ''}
+        <div class="report-votes">
+            <button onclick="vote(${r.id},'up')" class="vote-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5m-7 7l7-7 7 7"/></svg>
+                ${r.upvotes||0}
+            </button>
+            <button onclick="vote(${r.id},'down')" class="vote-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m7-7l-7 7-7-7"/></svg>
+                ${r.downvotes||0}
+            </button>
+        </div>
+    </div>`).join('');
+}
+
+async function vote(id, type) {
+    await fetch(`/api/reports/${id}/vote`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({vote_type: type})});
+    const rr = await fetch(`/api/trail/${FID}/reports`);
+    document.getElementById('reportsList').innerHTML = renderReports(await rr.json());
+}
+
+loadTrail();
+</script>
+{% endblock %}
