@@ -201,6 +201,7 @@ async function doSearch() {
         }
         
         currentTrails = trails;
+        sessionStorage.setItem('trailcondish_results', JSON.stringify(trails));
         renderResults(trails);
     } catch(e) {
         document.getElementById('resultsList').innerHTML = `<p class="muted">Search failed: ${e.message}</p>`;
@@ -267,6 +268,33 @@ async function loadRoutes(trails) {
 // Init map on page load
 initMap();
 document.getElementById('viewToggle').style.display = 'flex';
+
+// Restore map state from sessionStorage
+const savedMap = sessionStorage.getItem('trailcondish_map');
+if (savedMap) {
+    try {
+        const s = JSON.parse(savedMap);
+        map.setView([s.lat, s.lng], s.zoom);
+    } catch(e) {}
+}
+
+// Save map state on move
+map.on('moveend', () => {
+    const c = map.getCenter();
+    sessionStorage.setItem('trailcondish_map', JSON.stringify({lat: c.lat, lng: c.lng, zoom: map.getZoom()}));
+});
+
+// Restore search results from sessionStorage
+const savedResults = sessionStorage.getItem('trailcondish_results');
+if (savedResults) {
+    try {
+        const trails = JSON.parse(savedResults);
+        if (trails.length) {
+            currentTrails = trails;
+            renderResults(trails);
+        }
+    } catch(e) {}
+}
 
 // Show "Search This Area" button when user pans/zooms the map
 const searchMapBtn = document.getElementById('searchMapBtn');
