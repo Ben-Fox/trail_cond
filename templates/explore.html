@@ -238,8 +238,8 @@ function renderResults(trails) {
     document.getElementById('resultsList').innerHTML = html;
     if (bounds.length) map.fitBounds(bounds, {padding: [30, 30]});
     
-    // Load route geometry for trails visible on map (lazy)
-    loadRoutes(trails);
+    // Route loading disabled to avoid Overpass rate limits
+    // Routes are visible on the Waymarked Trails overlay instead
 }
 
 async function loadRoutes(trails) {

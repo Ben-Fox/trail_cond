@@ -63,18 +63,45 @@ def geocode(query):
         'bbox': [float(b) for b in bbox] if len(bbox) == 4 else None
     }
 
+_last_overpass_request = 0
+OVERPASS_SERVERS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+]
+
 def overpass_query(query):
+    global _last_overpass_request
     cache_key = hashlib.md5(query.encode()).hexdigest()
     now = time.time()
     if cache_key in _overpass_cache:
         ts, data = _overpass_cache[cache_key]
         if now - ts < CACHE_TTL:
             return data
-    r = requests.post(OVERPASS_URL, data={'data': query}, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-    _overpass_cache[cache_key] = (now, data)
-    return data
+    
+    # Rate limit: wait at least 1.5s between requests
+    elapsed = now - _last_overpass_request
+    if elapsed < 1.5:
+        time.sleep(1.5 - elapsed)
+    
+    # Try multiple servers
+    last_err = None
+    for server in OVERPASS_SERVERS:
+        try:
+            _last_overpass_request = time.time()
+            r = requests.post(server, data={'data': query}, timeout=30)
+            if r.status_code == 429:
+                last_err = Exception(f'Rate limited by {server}')
+                time.sleep(2)
+                continue
+            r.raise_for_status()
+            data = r.json()
+            _overpass_cache[cache_key] = (time.time(), data)
+            return data
+        except Exception as e:
+            last_err = e
+            continue
+    
+    raise last_err or Exception('All Overpass servers failed')
 
 def parse_osm_trails(data):
     """Parse Overpass response into trail list."""
