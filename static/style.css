@@ -388,3 +388,39 @@ body {
 .trail-cluster-medium span { font-size: 14px; }
 .trail-cluster-large div { width: 44px; height: 44px; }
 .trail-cluster-large span { font-size: 16px; }
+
+/* Dual conditions panels */
+.conditions-dual {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+}
+@media (max-width: 768px) {
+    .conditions-dual { grid-template-columns: 1fr; }
+}
+.condition-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-top: 4px solid var(--green);
+}
+.condition-panel h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--font-lg);
+    margin-bottom: 1rem;
+    color: var(--green);
+}
+.community-synthesis { margin-bottom: 1rem; }
+.reports-list { max-height: 400px; overflow-y: auto; }
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+}
+@media (max-width: 768px) {
+    .form-row { grid-template-columns: 1fr; }
+}

@@ -40,7 +40,7 @@ async function loadTrail() {
     if (distMi) html += `<span class="tag">${distMi} mi (${trail.distance_km} km)</span>`;
     else if (distKm) html += `<span class="tag">${distKm}</span>`;
     if (trail.access) html += `<span class="tag">Access: ${trail.access}</span>`;
-    if (trail.wheelchair) html += `<span class="tag">♿ ${trail.wheelchair}</span>`;
+    if (trail.wheelchair) html += `<span class="tag">Wheelchair: ${trail.wheelchair}</span>`;
     if (trail.network) html += `<span class="tag">${trail.network}</span>`;
     html += `</div>`;
     
@@ -48,41 +48,63 @@ async function loadTrail() {
     if (trail.operator) html += `<p class="trail-operator">Managed by: ${trail.operator}</p>`;
     if (trail.website) html += `<p><a href="${trail.website}" target="_blank" rel="noopener">Official Website</a></p>`;
     
-    // Map
-    if (trail.lat && trail.lon) {
-        html += `<div class="section-block"><h2>Map</h2>
-            <div id="trailMap" class="trail-map"></div>
-            <label class="toggle-label"><input type="checkbox" id="overlayToggle" checked> Show hiking trails overlay</label>
-        </div>`;
-    }
+    // === CONDITIONS SECTION (TOP) — Two columns ===
+    html += `<div class="conditions-dual">`;
     
-    // Weather
-    html += `<div class="section-block" id="weatherSection"><h2>Trail Conditions</h2><p class="muted">Loading weather data...</p></div>`;
+    // Left: Weather-based conditions
+    html += `<div class="condition-panel" id="weatherConditions">
+        <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            Trail Conditions Based On Weather
+        </h2>
+        <p class="muted">Loading weather data...</p>
+    </div>`;
     
-    // Reports
-    html += `<div class="section-block"><h2>Community Reports</h2><div id="reportsList">${renderReports(reports)}</div>`;
-    html += `<h3>Submit a Report</h3>
+    // Right: Community-based conditions
+    html += `<div class="condition-panel" id="communityConditions">
+        <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Trail Conditions Based On Community
+        </h2>
+        <div id="reportsList">${renderReports(reports)}</div>
+    </div>`;
+    
+    html += `</div>`;
+    
+    // === SUBMIT REPORT ===
+    html += `<div class="section-block">
+        <h2>Submit a Condition Report</h2>
         <form id="reportForm" class="report-form">
-            <label>Overall Condition<select name="trail_condition"><option>Great</option><option>Good</option><option>Fair</option><option>Poor</option></select></label>
-            <label>Trail Surface<select name="trail_surface"><option>Dry</option><option>Muddy</option><option>Snowy</option><option>Icy</option></select></label>
-            <label>Road Access<select name="road_access"><option>Open</option><option>Rough</option><option>Closed</option></select></label>
-            <label>Notes<textarea name="general_notes" rows="2" placeholder="Brief notes..."></textarea></label>
+            <div class="form-row">
+                <label>Overall Condition<select name="trail_condition"><option>Great</option><option>Good</option><option>Fair</option><option>Poor</option></select></label>
+                <label>Trail Surface<select name="trail_surface"><option>Dry</option><option>Muddy</option><option>Snowy</option><option>Icy</option></select></label>
+                <label>Road Access<select name="road_access"><option>Open</option><option>Rough</option><option>Closed</option></select></label>
+            </div>
+            <label>Notes<textarea name="general_notes" rows="2" placeholder="What did you see out there?"></textarea></label>
             <label>Date Visited<input type="date" name="date_visited" value="${new Date().toISOString().slice(0,10)}"></label>
             <button type="submit" class="btn btn-primary">Submit Report</button>
         </form>
     </div>`;
+    
+    // === MAP (BOTTOM) ===
+    if (trail.lat && trail.lon) {
+        html += `<div class="section-block">
+            <h2>Trail Map</h2>
+            <div id="trailMap" class="trail-map"></div>
+            <label class="toggle-label"><input type="checkbox" id="overlayToggle" checked> Show hiking trails overlay</label>
+        </div>`;
+    }
     
     // OSM attribution
     html += `<p class="muted" style="margin-top:2rem;font-size:0.8rem">Trail data from <a href="https://www.openstreetmap.org/${OSM_TYPE}/${OSM_ID}" target="_blank">OpenStreetMap</a></p>`;
     
     document.getElementById('trailContent').innerHTML = html;
     
-    // Init map with trail geometry
+    // Init map
     if (trail.lat && trail.lon) {
         const map = L.map('trailMap').setView([trail.lat, trail.lon], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OSM'}).addTo(map);
         
-        // Draw trail geometry as polyline
         if (trail.geometry && trail.geometry.length > 1) {
             const latlngs = trail.geometry.map(p => [p.lat, p.lon]);
             const polyline = L.polyline(latlngs, {color: '#c44536', weight: 4, opacity: 0.8}).addTo(map);
@@ -93,13 +115,12 @@ async function loadTrail() {
         
         const hikingOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.7, attribution:'Waymarked Trails'});
         hikingOverlay.addTo(map);
-        
         document.getElementById('overlayToggle').addEventListener('change', function() {
             this.checked ? hikingOverlay.addTo(map) : map.removeLayer(hikingOverlay);
         });
     }
     
-    // Load weather
+    // Load weather conditions
     if (trail.lat && trail.lon) {
         const wr = await fetch(`/api/weather/history?lat=${trail.lat}&lon=${trail.lon}`);
         const w = await wr.json();
@@ -107,30 +128,39 @@ async function loadTrail() {
             let whtml = '';
             const tempF = Math.round(w.current.temp_c * 9/5 + 32);
             const wDesc = weatherDescriptions[w.current.weathercode] || 'Unknown';
-            whtml += `<div class="weather-current"><span class="weather-temp">${tempF}°F</span> <span class="weather-desc">${wDesc}</span> <span class="weather-wind">Wind: ${w.current.windspeed} km/h</span></div>`;
             
+            // Current weather
+            whtml += `<div class="weather-current"><span class="weather-temp">${tempF}°F</span> <span class="weather-desc">${wDesc}</span></div>`;
+            whtml += `<div class="weather-wind">Wind: ${w.current.windspeed} km/h</div>`;
+            
+            // Condition badge
             const inf = w.inference;
             whtml += `<div class="condition-badge" style="background:${inf.color}">${inf.condition.toUpperCase()}</div>`;
+            
+            // Reasoning
             whtml += `<div class="condition-reasons">`;
             inf.reasons.forEach(r => { whtml += `<p class="reason">${r}</p>`; });
             whtml += `</div>`;
             
-            whtml += `<div class="weather-history"><h3>7-Day Weather History</h3><div class="history-grid">`;
+            // 7-day history
+            whtml += `<div class="weather-history"><h3>7-Day History</h3><div class="history-grid">`;
             for (let i = 0; i < (w.daily.dates||[]).length; i++) {
                 const d = w.daily.dates[i];
                 const hi = w.daily.temp_max[i] != null ? Math.round(w.daily.temp_max[i]*9/5+32) : '--';
                 const lo = w.daily.temp_min[i] != null ? Math.round(w.daily.temp_min[i]*9/5+32) : '--';
                 const precip = w.daily.precip[i] || 0;
                 const snow = w.daily.snow[i] || 0;
-                whtml += `<div class="history-day"><div class="hd-date">${d.slice(5)}</div><div class="hd-temp">${hi}/${lo}°F</div>${precip > 0 ? `<div class="hd-precip">${precip}mm</div>` : ''}${snow > 0 ? `<div class="hd-snow">${snow}cm snow</div>` : ''}</div>`;
+                whtml += `<div class="history-day"><div class="hd-date">${d.slice(5)}</div><div class="hd-temp">${hi}/${lo}°F</div>${precip > 0 ? `<div class="hd-precip">${precip}mm rain</div>` : ''}${snow > 0 ? `<div class="hd-snow">${snow}cm snow</div>` : ''}</div>`;
             }
             whtml += `</div></div>`;
             
-            document.getElementById('weatherSection').innerHTML = `<h2>Trail Conditions</h2>${whtml}`;
+            document.getElementById('weatherConditions').innerHTML = `<h2>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                Trail Conditions Based On Weather</h2>${whtml}`;
         }
     }
     
-    // Report form
+    // Report form handler
     document.getElementById('reportForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         const fd = new FormData(this);
@@ -143,10 +173,21 @@ async function loadTrail() {
 }
 
 function renderReports(reports) {
-    if (!reports || !reports.length) return '<p class="muted">No reports yet. Be the first!</p>';
-    return reports.map(r => `<div class="report">
+    if (!reports || !reports.length) return '<p class="muted">No Reports Made</p>';
+    
+    // Synthesize community condition from latest reports
+    const latest = reports[0];
+    let synthesis = `<div class="community-synthesis">
+        <div class="condition-badge" style="background:${conditionColor(latest.trail_condition)}">${(latest.trail_condition || 'Unknown').toUpperCase()}</div>
+        ${latest.trail_surface ? `<span class="tag">${latest.trail_surface}</span>` : ''}
+        ${latest.road_access ? `<span class="tag">Road: ${latest.road_access}</span>` : ''}
+        <p class="muted" style="margin-top:0.5rem">Based on ${reports.length} report${reports.length !== 1 ? 's' : ''}</p>
+    </div>`;
+    
+    synthesis += `<div class="reports-list">`;
+    synthesis += reports.map(r => `<div class="report">
         <div class="report-header">
-            <span class="report-condition tag">${r.trail_condition || ''}</span>
+            <span class="report-condition tag" style="background:${conditionColor(r.trail_condition)};color:white">${r.trail_condition || ''}</span>
             ${r.trail_surface ? `<span class="tag">${r.trail_surface}</span>` : ''}
             ${r.road_access ? `<span class="tag">Road: ${r.road_access}</span>` : ''}
             <span class="report-date">${r.date_visited || r.created_at?.slice(0,10) || ''}</span>
@@ -163,6 +204,18 @@ function renderReports(reports) {
             </button>
         </div>
     </div>`).join('');
+    synthesis += `</div>`;
+    return synthesis;
+}
+
+function conditionColor(cond) {
+    if (!cond) return '#6c757d';
+    const c = cond.toLowerCase();
+    if (c === 'great') return '#2d6a4f';
+    if (c === 'good') return '#52b788';
+    if (c === 'fair') return '#e9c46a';
+    if (c === 'poor') return '#c44536';
+    return '#6c757d';
 }
 
 async function vote(id, type) {
