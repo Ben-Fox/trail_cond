@@ -1,11 +1,28 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask_compress import Compress
 import requests
 import hashlib
 import time
+import os
 from math import radians, sin, cos, sqrt, atan2
 from database import get_db, init_db
 
 app = Flask(__name__)
+
+# Gzip/Brotli compression for all responses
+Compress(app)
+app.config['COMPRESS_ALGORITHM'] = ['br', 'gzip']
+app.config['COMPRESS_MIMETYPES'] = [
+    'text/html', 'text/css', 'text/javascript', 'application/javascript',
+    'application/json', 'image/svg+xml'
+]
+
+# Static asset cache headers (24 hours)
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 86400
+
+# Reuse HTTP connections to external APIs (connection pooling)
+http_session = requests.Session()
+http_session.headers.update({'User-Agent': 'TrailCondish/1.0'})
 RIDB_KEY = 'b4cf5317-0be1-4127-97de-5bed2d3b0b68'
 RIDB_BASE = 'https://ridb.recreation.gov/api/v1'
 OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
@@ -27,14 +44,50 @@ STATE_NAMES = {
 _overpass_cache = {}
 CACHE_TTL = 600  # 10 minutes
 
+# API response cache
+_api_cache = {}
+API_CACHE_TTL = 300  # 5 minutes
+
+def cached_response(key, ttl=API_CACHE_TTL):
+    """Check if a cached API response exists and is fresh."""
+    now = time.time()
+    if key in _api_cache:
+        ts, data = _api_cache[key]
+        if now - ts < ttl:
+            return data
+    return None
+
+def cache_response(key, data, ttl=API_CACHE_TTL):
+    """Store an API response in cache."""
+    _api_cache[key] = (time.time(), data)
+    # Prune if too large
+    if len(_api_cache) > 500:
+        cutoff = time.time() - ttl
+        stale = [k for k, (ts, _) in _api_cache.items() if ts < cutoff]
+        for k in stale:
+            del _api_cache[k]
+    return data
+
+@app.after_request
+def add_cache_headers(response):
+    """Add cache headers for static assets and API responses."""
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+    elif request.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'public, max-age=60'
+    # Security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    return response
+
 NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 
 def geocode(query):
     """Use Nominatim to geocode a query, return dict with lat/lon/bbox or None.
     Fetches multiple results and prefers natural features / parks."""
-    r = requests.get(NOMINATIM_URL, params={
+    r = http_session.get(NOMINATIM_URL, params={
         'q': query, 'format': 'json', 'limit': 5, 'countrycodes': 'us'
-    }, headers={'User-Agent': 'TrailCondish/1.0'}, timeout=10)
+    }, timeout=10)
     results = r.json()
     if not results:
         return None
@@ -94,7 +147,7 @@ def overpass_query(query):
     for server in OVERPASS_SERVERS:
         try:
             _last_overpass_request = time.time()
-            r = requests.post(server, data={'data': query}, timeout=30)
+            r = http_session.post(server, data={'data': query}, timeout=30)
             if r.status_code == 429:
                 last_err = Exception(f'Rate limited by {server}')
                 time.sleep(2)
@@ -189,9 +242,9 @@ def api_autocomplete():
     
     # 1. Query Nominatim for place suggestions (fast)
     try:
-        r = requests.get(NOMINATIM_URL, params={
+        r = http_session.get(NOMINATIM_URL, params={
             'q': q, 'format': 'json', 'limit': 8, 'countrycodes': 'us'
-        }, headers={'User-Agent': 'TrailCondish/1.0'}, timeout=5)
+        }, timeout=5)
         for place in r.json():
             display = place.get('display_name', '')
             parts = display.split(',')
@@ -340,6 +393,13 @@ out center tags 20;'''
 def api_trail(osm_type, osm_id):
     if osm_type not in ('way', 'relation'):
         return jsonify({'error': 'Invalid type'}), 400
+    
+    # Check cache first
+    cache_key = f"trail:{osm_type}:{osm_id}"
+    cached = cached_response(cache_key, ttl=CACHE_TTL)
+    if cached:
+        return jsonify(cached)
+    
     try:
         query = f'''[out:json][timeout:25];
 {osm_type}({osm_id});
@@ -401,6 +461,7 @@ out geom tags;'''
             'operator': tags.get('operator', ''),
             'website': tags.get('website', tags.get('url', '')),
         }
+        cache_response(cache_key, result)
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -423,7 +484,7 @@ def api_elevation():
         for i in range(0, len(lat_list), 100):
             batch_lats = ','.join(lat_list[i:i+100])
             batch_lons = ','.join(lon_list[i:i+100])
-            r = requests.get('https://api.open-meteo.com/v1/elevation', params={
+            r = http_session.get('https://api.open-meteo.com/v1/elevation', params={
                 'latitude': batch_lats,
                 'longitude': batch_lons,
             }, timeout=10)
@@ -469,7 +530,7 @@ def api_weather_grid():
         batch_lats = ','.join(lat_list[i] for i in uncached_indices)
         batch_lons = ','.join(lon_list[i] for i in uncached_indices)
         try:
-            r = requests.get('https://api.open-meteo.com/v1/forecast', params={
+            r = http_session.get('https://api.open-meteo.com/v1/forecast', params={
                 'latitude': batch_lats,
                 'longitude': batch_lons,
                 'daily': 'temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,rain_sum',
@@ -551,7 +612,7 @@ def api_weather_batch():
         try:
             lats = ','.join(u[0] for u in uncached)
             lons = ','.join(u[1] for u in uncached)
-            r = requests.get('https://api.open-meteo.com/v1/forecast', params={
+            r = http_session.get('https://api.open-meteo.com/v1/forecast', params={
                 'latitude': lats, 'longitude': lons,
                 'current_weather': 'true'
             }, timeout=10)
@@ -585,8 +646,14 @@ def api_weather_history():
     if not lat or not lon:
         return jsonify({'error': 'lat/lon required'}), 400
     
+    # Cache weather for 30 min (doesn't change fast)
+    wh_key = f"wxh:{float(lat):.2f},{float(lon):.2f}"
+    cached = cached_response(wh_key, ttl=1800)
+    if cached:
+        return jsonify(cached)
+    
     try:
-        r = requests.get('https://api.open-meteo.com/v1/forecast', params={
+        r = http_session.get('https://api.open-meteo.com/v1/forecast', params={
             'latitude': lat, 'longitude': lon,
             'current_weather': 'true',
             'daily': 'temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,rain_sum,weathercode',
@@ -647,7 +714,7 @@ def api_weather_history():
         elif condition in ('snowy', 'icy'):
             badge = 'red'
         
-        return jsonify({
+        wx_result = {
             'current': {
                 'temp_c': current.get('temperature'),
                 'windspeed': current.get('windspeed'),
@@ -671,7 +738,9 @@ def api_weather_history():
                 'total_snow_cm': round(total_snow, 1),
                 'total_rain_mm': round(total_rain, 1),
             }
-        })
+        }
+        cache_response(wh_key, wx_result, ttl=1800)
+        return jsonify(wx_result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -680,7 +749,6 @@ def api_weather_history():
 def get_reports(facility_id):
     db = get_db()
     reports = db.execute('SELECT * FROM reports WHERE facility_id=? ORDER BY created_at DESC', (facility_id,)).fetchall()
-    db.close()
     return jsonify([dict(r) for r in reports])
 
 @app.route('/api/trail/<path:facility_id>/reports', methods=['POST'])
@@ -690,7 +758,6 @@ def add_report(facility_id):
     db.execute('INSERT INTO reports (facility_id, trail_condition, trail_surface, road_access, general_notes, date_visited) VALUES (?,?,?,?,?,?)',
                (facility_id, data.get('trail_condition'), data.get('trail_surface'), data.get('road_access'), data.get('general_notes'), data.get('date_visited')))
     db.commit()
-    db.close()
     return jsonify({'ok': True})
 
 @app.route('/api/reports/<int:report_id>/vote', methods=['POST'])
@@ -703,7 +770,6 @@ def vote_report(report_id):
         existing = db.execute('SELECT vote_type FROM votes WHERE report_id=? AND ip_hash=?', (report_id, ip_hash)).fetchone()
         if existing:
             if existing['vote_type'] == vote_type:
-                db.close()
                 return jsonify({'error': 'Already voted'}), 400
             db.execute('UPDATE votes SET vote_type=? WHERE report_id=? AND ip_hash=?', (vote_type, report_id, ip_hash))
             if vote_type == 'up':
@@ -718,11 +784,11 @@ def vote_report(report_id):
                 db.execute('UPDATE reports SET downvotes=downvotes+1 WHERE id=?', (report_id,))
         db.commit()
     except Exception as e:
-        db.close()
         return jsonify({'error': str(e)}), 500
-    db.close()
     return jsonify({'ok': True})
 
+# Initialize DB on import (works with both gunicorn and direct run)
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=8095, debug=False, threaded=True)

@@ -1,13 +1,29 @@
 import sqlite3
 import os
+import threading
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'trailcondish.db')
 
+# Thread-local connection pool
+_local = threading.local()
+
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    """Get a thread-local database connection (reused within same thread)."""
+    if not hasattr(_local, 'conn') or _local.conn is None:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-8000")  # 8MB cache
+        conn.execute("PRAGMA busy_timeout=5000")  # 5s wait on lock
+        _local.conn = conn
+    return _local.conn
+
+def close_db():
+    """Close the thread-local connection."""
+    if hasattr(_local, 'conn') and _local.conn:
+        _local.conn.close()
+        _local.conn = None
 
 def init_db():
     conn = get_db()
@@ -35,4 +51,3 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_reports_facility ON reports(facility_id);
         CREATE INDEX IF NOT EXISTS idx_votes_report ON votes(report_id);
     ''')
-    conn.close()
