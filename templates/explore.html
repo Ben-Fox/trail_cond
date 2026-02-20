@@ -59,7 +59,7 @@ let currentTrails = [];
 function initMap() {
     if (map) return;
     map = L.map('map').setView([39.5, -98.5], 4);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OSM'}).addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/voyager/{z}/{x}/{y}{r}.png', {attribution:'&copy; OSM &copy; CARTO', subdomains:'abcd', maxZoom:20}).addTo(map);
     markerCluster = L.markerClusterGroup({
         maxClusterRadius: 50,
         spiderfyOnMaxZoom: true,
