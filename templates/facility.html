@@ -1,298 +1,117 @@
 {% extends "base.html" %}
-{% block title %}Facility Details{% endblock %}
+{% block title %}Facility — TrailCondish{% endblock %}
 {% block content %}
-<div class="facility-page" id="facility-page" data-id="{{ facility_id }}">
-    <div class="facility-loading">Loading facility details...</div>
+<div class="facility-header">
+    <div class="container">
+        <span class="type-label" id="fac-type"></span>
+        <h1 id="fac-name">Loading...</h1>
+    </div>
 </div>
+<section class="section" style="padding-top:1.5rem">
+    <div class="container">
+        <div class="detail-grid">
+            <div>
+                <div class="info-block">
+                    <h3>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+                        About
+                    </h3>
+                    <div id="fac-description"></div>
+                    <div id="fac-directions" style="margin-top:1rem"></div>
+                </div>
+                <div class="info-block" id="fac-activities-block" style="display:none">
+                    <h3>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5S13.67 7 14.5 7s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M8.5 14l1 3.4a.5.5 0 00.5.35h.28a.5.5 0 00.47-.33L12 14"/><path d="M13 16l1.5 4.4a.5.5 0 00.47.35h.28a.5.5 0 00.48-.36L18 14"/><path d="M18 14l-2-6h-4l-1 3"/></svg>
+                        Activities
+                    </h3>
+                    <div class="activity-tags" id="fac-activities"></div>
+                </div>
+                <div class="info-block" id="fac-photos-block" style="display:none">
+                    <h3>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        Photos
+                    </h3>
+                    <div class="photo-grid" id="fac-photos"></div>
+                </div>
+                <div class="info-block" id="fac-contact-block" style="display:none">
+                    <h3>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                        Contact
+                    </h3>
+                    <div id="fac-contact"></div>
+                </div>
+            </div>
+            <div>
+                <div style="margin-bottom:1rem">
+                    <label class="toggle-label" onclick="toggleTrails()">
+                        <div class="toggle-switch" id="trail-toggle"></div>
+                        Show Hiking Trails
+                    </label>
+                </div>
+                <div id="facility-map"></div>
+                <div class="weather-widget" style="margin-top:1.5rem">
+                    <h3 style="color:var(--brown);margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg>
+                        Weather &amp; Conditions
+                    </h3>
+                    <div id="weather-content"><div class="loading"><div class="spinner"></div></div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-block" style="margin-top:2rem">
+            <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                Community Condition Reports
+            </h3>
+            <div id="reports-list"><div class="loading"><div class="spinner"></div></div></div>
+            <h4 style="margin-top:1.5rem;color:var(--brown)">Submit a Report</h4>
+            <form id="report-form" style="margin-top:.75rem">
+                <div class="form-group">
+                    <label>Overall Condition</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="status" value="Great"><span>Great</span></label>
+                        <label><input type="radio" name="status" value="Good" checked><span>Good</span></label>
+                        <label><input type="radio" name="status" value="Fair"><span>Fair</span></label>
+                        <label><input type="radio" name="status" value="Poor"><span>Poor</span></label>
+                        <label><input type="radio" name="status" value="Closed"><span>Closed</span></label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Trail Surface</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="trail_condition" value="Dry"><span>Dry</span></label>
+                        <label><input type="radio" name="trail_condition" value="Muddy"><span>Muddy</span></label>
+                        <label><input type="radio" name="trail_condition" value="Snowy"><span>Snowy</span></label>
+                        <label><input type="radio" name="trail_condition" value="Icy"><span>Icy</span></label>
+                        <label><input type="radio" name="trail_condition" value="Flooded"><span>Flooded</span></label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Road Access</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="road_access" value="Clear & Paved"><span>Clear &amp; Paved</span></label>
+                        <label><input type="radio" name="road_access" value="Passable but Rough"><span>Passable but Rough</span></label>
+                        <label><input type="radio" name="road_access" value="High Clearance"><span>High Clearance</span></label>
+                        <label><input type="radio" name="road_access" value="Closed"><span>Closed</span></label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Date Visited</label>
+                    <input type="date" name="date_visited">
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea name="general_notes" placeholder="Share what you saw..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Submit Report</button>
+            </form>
+            <div id="report-success" class="success-msg" style="display:none;margin-top:1rem">Report submitted! Thank you for helping the community.</div>
+        </div>
+    </div>
+</section>
 {% endblock %}
 {% block scripts %}
-<script src="/static/js/map.js"></script>
-<script src="/static/js/reports.js"></script>
-<script>
-const facilityId = '{{ facility_id }}';
-
-const SVG = {
-    clipboard: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>',
-    compass: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88"/></svg>',
-    target: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
-    accessible: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4" r="2"/><path d="M9 22l3-9 3 9"/><path d="M7 12h10"/></svg>',
-    binoculars: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="4"/><circle cx="17" cy="17" r="4"/><path d="M7 13V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v8"/><path d="M17 13V5a2 2 0 0 0-2-2h0a2 2 0 0 0-2 2v8"/></svg>',
-    edit: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>',
-    chat: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
-    mapPin: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>',
-    sun: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
-    cloud: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 1 0 0-10z"/></svg>',
-    snowflake: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></svg>',
-    phone: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
-    thermometer: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>',
-    arrowUp: '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
-    arrowDown: '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
-    checkCircle: '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-    alertTriangle: '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-    xCircle: '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
-};
-
-const statusIcons = { 'open': SVG.checkCircle, 'partially_open': SVG.alertTriangle, 'closed': SVG.xCircle };
-
-async function loadFacility() {
-    const page = document.getElementById('facility-page');
-    try {
-        const res = await fetch(`/api/facility/${encodeURIComponent(facilityId)}`);
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-        const data = await res.json();
-        if (data.error) { page.innerHTML = `<p class="error">Error: ${data.error}</p>`; return; }
-        
-        const summary = data.condition_summary;
-        const statusClass = summary ? ({'open':'good','partially_open':'caution','closed':'bad'}[summary.status]||'unknown') : 'unknown';
-        const statusLabel = summary ? summary.status.replace('_',' ') : 'No reports yet';
-        
-        let mediaHtml = '';
-        if (data.media && data.media.length) {
-            mediaHtml = `<div class="facility-gallery">${data.media.slice(0,4).map(m=>`<img src="${m.url}" alt="${m.title}" loading="lazy">`).join('')}</div>`;
-        }
-        
-        page.innerHTML = `
-            <div class="facility-header">
-                <div>
-                    <h1>${data.name}</h1>
-                    <span class="badge badge-${statusClass}">${statusLabel}</span>
-                    ${data.ada === 'Yes' ? '<span class="badge badge-ada">' + SVG.accessible + ' Accessible</span>' : ''}
-                    <p class="facility-type">${data.type || ''}</p>
-                </div>
-            </div>
-            ${mediaHtml}
-            <div class="facility-grid">
-                <div class="facility-main">
-                    <div class="card">
-                        <h2>${SVG.clipboard} Description</h2>
-                        <div class="description">${data.description || 'No description available.'}</div>
-                    </div>
-                    ${data.directions ? `<div class="card"><h2>${SVG.compass} Directions</h2><p>${data.directions}</p></div>` : ''}
-                    ${data.activities && data.activities.length ? `<div class="card"><h2>${SVG.target} Activities</h2><div class="tags">${data.activities.map(a=>`<span class="tag">${a}</span>`).join('')}</div></div>` : ''}
-                    ${data.ada_text ? `<div class="card"><h2>${SVG.accessible} Accessibility</h2><p>${data.ada_text}</p></div>` : ''}
-                    ${summary ? `<div class="card condition-card">
-                        <h2>${SVG.binoculars} Condition Summary</h2>
-                        <p><strong>Based on ${summary.report_count} recent report(s)</strong></p>
-                        <div class="condition-grid">
-                            <div>Status: <span class="badge badge-${statusClass}">${statusLabel}</span></div>
-                            <div>Trail: <strong>${summary.trail_condition}</strong></div>
-                            <div>Road Access: <strong>${(summary.road_access||'unknown').replace('_',' ')}</strong></div>
-                            <div>Trash: <strong>${summary.trash_level}</strong></div>
-                            <div>Last reported: ${new Date(summary.last_reported).toLocaleDateString()}</div>
-                        </div>
-                    </div>` : ''}
-                    <div class="card" id="weather-inference-card" style="display:none;">
-                        <h2>${SVG.thermometer} Weather-Inferred Conditions</h2>
-                        <div id="weather-inference"></div>
-                    </div>
-                    <div class="card">
-                        <h2>${SVG.edit} Submit a Condition Report</h2>
-                        <form id="report-form" onsubmit="submitReport(event)">
-                            <div class="form-row">
-                                <label>Status</label>
-                                <select name="status" required>
-                                    <option value="open">${SVG.checkCircle} Open</option>
-                                    <option value="partially_open">${SVG.alertTriangle} Partially Open</option>
-                                    <option value="closed">${SVG.xCircle} Closed</option>
-                                </select>
-                            </div>
-                            <div class="form-row">
-                                <label>Trail Condition</label>
-                                <select name="trail_condition">
-                                    <option value="">-- Select --</option>
-                                    <option value="dry">Dry</option>
-                                    <option value="muddy">Muddy</option>
-                                    <option value="snowy">Snowy</option>
-                                    <option value="icy">Icy</option>
-                                    <option value="overgrown">Overgrown</option>
-                                    <option value="flooded">Flooded</option>
-                                </select>
-                            </div>
-                            <div class="form-row">
-                                <label>Trash Level</label>
-                                <select name="trash_level">
-                                    <option value="">-- Select --</option>
-                                    <option value="clean">Clean</option>
-                                    <option value="some_litter">Some Litter</option>
-                                    <option value="lots_of_trash">Lots of Trash</option>
-                                </select>
-                            </div>
-                            <div class="form-row">
-                                <label>Road Access</label>
-                                <select name="road_access">
-                                    <option value="">-- Select --</option>
-                                    <option value="clear_paved">Roads clear and paved</option>
-                                    <option value="passable_rough">Roads passable but rough</option>
-                                    <option value="muddy_snowy">Roads muddy/snowy — high clearance recommended</option>
-                                    <option value="closed">Roads closed/impassable</option>
-                                    <option value="unknown">Unknown</option>
-                                </select>
-                            </div>
-                            <div class="form-row">
-                                <label>Accessibility Notes</label>
-                                <textarea name="accessibility_notes" rows="2" placeholder="Wheelchair access, trail width, etc."></textarea>
-                            </div>
-                            <div class="form-row">
-                                <label>General Notes</label>
-                                <textarea name="general_notes" rows="3" placeholder="What did you see? How was it?"></textarea>
-                            </div>
-                            <div class="form-row">
-                                <label>Date Visited</label>
-                                <input type="date" name="date_visited">
-                            </div>
-                            <div class="form-row">
-                                <label>Photo URL (optional)</label>
-                                <input type="url" name="photo_url" placeholder="https://...">
-                            </div>
-                            <button type="submit" class="btn-primary">Submit Report</button>
-                        </form>
-                    </div>
-                    <div class="card">
-                        <h2>${SVG.chat} Community Reports</h2>
-                        <div id="reports-list">Loading reports...</div>
-                    </div>
-                </div>
-                <div class="facility-sidebar">
-                    <div class="card">
-                        <h2>${SVG.mapPin} Location</h2>
-                        <div id="detail-map" style="height:300px;border-radius:8px;"></div>
-                        <div class="trail-overlay-toggle">
-                            <input type="checkbox" id="trail-overlay-toggle">
-                            <label for="trail-overlay-toggle">Show hiking trails overlay</label>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <h2>🥾 Nearby Trails</h2>
-                        <div id="nearby-trails"><p style="color:#888;font-size:0.85em;">Loading...</p></div>
-                    </div>
-                    <div class="card">
-                        <h2>${SVG.sun} Current Weather</h2>
-                        <div id="weather-widget">Loading...</div>
-                    </div>
-                    ${data.phone ? `<div class="card"><h2>${SVG.phone} Contact</h2><p>${data.phone}</p>${data.email?`<p>${data.email}</p>`:''}</div>` : ''}
-                    ${data.reservation_url ? `<div class="card"><a href="${data.reservation_url}" target="_blank" class="btn-primary" style="display:block;text-align:center;">Make Reservation</a></div>` : ''}
-                </div>
-            </div>
-        `;
-        
-        if (data.lat && data.lon) {
-            const map = initMap('detail-map', data.lat, data.lon, 13);
-            const color = ({'Campground':'#28a745','Trailhead':'#fd7e14','Day Use Area':'#007bff'}[data.type]) || '#6c757d';
-            L.circleMarker([data.lat, data.lon], {radius:10, fillColor:color, color:'#fff', weight:2, fillOpacity:0.85}).addTo(map).bindPopup(data.name);
-            
-            // Add waymarked trails overlay by default
-            addWaymarkedOverlay(map);
-            
-            // Toggle handler
-            const toggle = document.getElementById('trail-overlay-toggle');
-            if (toggle) {
-                toggle.checked = true;
-                toggle.addEventListener('change', function() {
-                    if (this.checked) addWaymarkedOverlay(map);
-                    else removeWaymarkedOverlay(map);
-                });
-            }
-            
-            // Load nearby trails from Waymarked Trails API
-            loadNearbyTrails(map, data.lat, data.lon, data.name).then(trails => {
-                const container = document.getElementById('nearby-trails');
-                if (trails && trails.length) {
-                    container.innerHTML = trails.slice(0, 8).map(t => {
-                        let details = [];
-                        if (t.group) details.push(t.group);
-                        return `<div class="nearby-trail-item">${t.name || 'Unnamed trail'}${details.length ? ' <span style="color:#888;font-size:0.8em">(' + details.join(', ') + ')</span>' : ''}</div>`;
-                    }).join('');
-                } else {
-                    container.innerHTML = '<p style="color:#888;font-size:0.85em;">No nearby trails found.</p>';
-                }
-            });
-            
-            loadWeather(data.lat, data.lon);
-            loadWeatherInference(data.lat, data.lon);
-        }
-        
-        loadReports(facilityId);
-    } catch(e) {
-        page.innerHTML = `<p class="error">Failed to load facility: ${e.message}</p>`;
-    }
-}
-
-async function loadWeather(lat, lon) {
-    try {
-        const res = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
-        const data = await res.json();
-        const w = data.current_weather;
-        if (!w) { document.getElementById('weather-widget').textContent = 'Unavailable'; return; }
-        const weatherDesc = {
-            0: [SVG.sun, 'Clear'],
-            1: [SVG.sun, 'Mostly Clear'],
-            2: [SVG.cloud, 'Partly Cloudy'],
-            3: [SVG.cloud, 'Overcast'],
-            45: [SVG.cloud, 'Fog'],
-            51: [SVG.cloud, 'Drizzle'],
-            61: [SVG.cloud, 'Rain'],
-            71: [SVG.snowflake, 'Snow'],
-            95: [SVG.cloud, 'Thunderstorm']
-        };
-        const [icon, label] = weatherDesc[w.weathercode] || [SVG.cloud, `Code ${w.weathercode}`];
-        document.getElementById('weather-widget').innerHTML = `
-            <div class="weather-info">
-                <div class="weather-temp">${Math.round(w.temperature)}\u00b0F</div>
-                <div>${icon} ${label}</div>
-                <div>Wind: ${Math.round(w.windspeed)} mph</div>
-            </div>
-        `;
-    } catch(e) {
-        document.getElementById('weather-widget').textContent = 'Unavailable';
-    }
-}
-
-async function loadWeatherInference(lat, lon) {
-    try {
-        const res = await fetch(`/api/weather/history?lat=${lat}&lon=${lon}`);
-        const data = await res.json();
-        if (data.error || !data.inference) return;
-        const inf = data.inference;
-        const card = document.getElementById('weather-inference-card');
-        const container = document.getElementById('weather-inference');
-        card.style.display = 'block';
-
-        const levelClass = { green: 'good', yellow: 'caution', red: 'bad' }[inf.level] || 'unknown';
-        const levelIcon = { green: SVG.checkCircle, yellow: SVG.alertTriangle, red: SVG.xCircle }[inf.level] || '';
-
-        container.innerHTML = `
-            <div class="inference-banner inference-${inf.level}">
-                <span class="inference-icon">${levelIcon}</span>
-                <span class="inference-prediction">${inf.prediction}</span>
-            </div>
-            <div class="inference-details">
-                <div class="inference-stats">
-                    <div class="inference-stat">
-                        <span class="inference-stat-value">${inf.total_snow_inches}"</span>
-                        <span class="inference-stat-label">${SVG.snowflake} Snow (7d)</span>
-                    </div>
-                    <div class="inference-stat">
-                        <span class="inference-stat-value">${inf.total_rain_inches}"</span>
-                        <span class="inference-stat-label">${SVG.cloud} Rain (7d)</span>
-                    </div>
-                    <div class="inference-stat">
-                        <span class="inference-stat-value">${inf.avg_high}\u00b0</span>
-                        <span class="inference-stat-label">${SVG.thermometer} Avg High</span>
-                    </div>
-                    <div class="inference-stat">
-                        <span class="inference-stat-value">${inf.avg_low}\u00b0</span>
-                        <span class="inference-stat-label">${SVG.thermometer} Avg Low</span>
-                    </div>
-                </div>
-                ${inf.reasons.length ? `<ul class="inference-reasons">${inf.reasons.map(r => `<li>${r}</li>`).join('')}</ul>` : ''}
-                <p class="inference-disclaimer">Based on 7-day weather history from Open-Meteo. Actual conditions may vary.</p>
-            </div>
-        `;
-    } catch(e) {
-        // silently fail
-    }
-}
-
-loadFacility();
-</script>
+<script>const FACILITY_ID = "{{ facility_id }}";</script>
+<script src="/static/js/facility.js"></script>
 {% endblock %}

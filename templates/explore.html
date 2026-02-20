@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Explore — TrailCondish{% endblock %}
+{% block content %}
+<section class="section" style="padding-top:1.5rem">
+    <div class="container">
+        <h2 class="section-title" style="margin-bottom:1rem">Explore Trails &amp; Campgrounds</h2>
+        <div class="search-bar">
+            <input type="text" id="search-query" placeholder="Search by name or keyword...">
+            <select id="search-state">
+                <option value="">All States</option>
+            </select>
+            <button class="btn btn-primary" onclick="doSearch()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Search
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="nearMe()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                Near Me
+            </button>
+        </div>
+        <div class="filter-bar">
+            <button class="btn btn-outline btn-sm active" data-filter="all" onclick="setFilter('all',this)">All</button>
+            <button class="btn btn-outline btn-sm" data-filter="campground" onclick="setFilter('campground',this)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21l9-18 9 18H3z"/><path d="M12 3v18"/></svg>
+                Campgrounds
+            </button>
+            <button class="btn btn-outline btn-sm" data-filter="trailhead" onclick="setFilter('trailhead',this)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19l4-14"/><path d="M8 5l8 0"/><path d="M12 5v14"/><path d="M20 19l-4-14"/></svg>
+                Trailheads
+            </button>
+            <button class="btn btn-outline btn-sm" data-filter="day use" onclick="setFilter('day use',this)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                Day Use
+            </button>
+        </div>
+        <div class="results-layout">
+            <div class="results-list" id="results-list">
+                <div class="loading" id="results-loading" style="display:none"><div class="spinner"></div><br>Searching...</div>
+                <div id="results-empty" style="text-align:center;padding:2rem;color:var(--gray)">Search for trails and campgrounds above, or use "Near Me" to find places nearby.</div>
+            </div>
+            <div id="explore-map"></div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/explore.js"></script>
+{% endblock %}
