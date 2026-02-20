@@ -33,14 +33,11 @@
             </button>
             <span id="resultCount" class="result-count"></span>
         </div>
-        <div id="mapView" class="map-view" style="display:none;">
+        <div id="mapView" class="map-view">
             <div id="map" class="explore-map-full"></div>
         </div>
         <div id="listView" class="list-view" style="display:none;">
             <div id="resultsList" class="results-list"></div>
-        </div>
-        <div id="placeholder" class="placeholder-msg">
-            <p class="muted">Search for trails to get started</p>
         </div>
     </div>
 </section>
@@ -102,8 +99,8 @@ const acDropdown = document.getElementById('autocompleteDropdown');
 searchInput.addEventListener('input', () => {
     clearTimeout(acTimer);
     const q = searchInput.value.trim();
-    if (q.length < 3) { acDropdown.style.display = 'none'; return; }
-    acTimer = setTimeout(() => fetchAutocomplete(q), 300);
+    if (q.length < 2) { acDropdown.style.display = 'none'; return; }
+    acTimer = setTimeout(() => fetchAutocomplete(q), 150);
 });
 
 searchInput.addEventListener('keydown', e => {
@@ -162,11 +159,8 @@ async function doSearch() {
     if (q) params.set('q', q);
     if (state) params.set('state', state);
     
-    document.getElementById('placeholder').style.display = 'none';
-    document.getElementById('viewToggle').style.display = 'flex';
     document.getElementById('resultsList').innerHTML = '';
     showView('map');
-    initMap();
     
     // Show loading in list view
     document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching trails via OpenStreetMap...</p></div>';
@@ -248,15 +242,16 @@ async function loadRoutes(trails) {
     }
 }
 
+// Init map on page load
+initMap();
+document.getElementById('viewToggle').style.display = 'flex';
+
 document.getElementById('searchBtn').addEventListener('click', doSearch);
 
 document.getElementById('nearMeBtn').addEventListener('click', () => {
     if (!navigator.geolocation) return alert('Geolocation not supported');
-    document.getElementById('placeholder').style.display = 'none';
-    document.getElementById('viewToggle').style.display = 'flex';
     document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Getting your location...</p></div>';
     showView('map');
-    initMap();
     
     navigator.geolocation.getCurrentPosition(async pos => {
         const lat = pos.coords.latitude;
