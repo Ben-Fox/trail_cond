@@ -35,6 +35,10 @@
         </div>
         <div id="mapView" class="map-view">
             <div id="map" class="explore-map-full"></div>
+            <button id="searchMapBtn" class="btn-search-map" style="display:none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+                Search This Area
+            </button>
         </div>
         <div id="listView" class="list-view" style="display:none;">
             <div id="resultsList" class="results-list"></div>
@@ -263,6 +267,60 @@ async function loadRoutes(trails) {
 // Init map on page load
 initMap();
 document.getElementById('viewToggle').style.display = 'flex';
+
+// Show "Search This Area" button when user pans/zooms the map
+const searchMapBtn = document.getElementById('searchMapBtn');
+let userMoved = false;
+map.on('moveend', () => {
+    if (map.getZoom() >= 9) {
+        searchMapBtn.style.display = 'flex';
+    } else {
+        searchMapBtn.style.display = 'none';
+    }
+});
+
+searchMapBtn.addEventListener('click', async () => {
+    const bounds = map.getBounds();
+    const bbox = `${bounds.getSouth().toFixed(5)},${bounds.getWest().toFixed(5)},${bounds.getNorth().toFixed(5)},${bounds.getEast().toFixed(5)}`;
+    searchMapBtn.style.display = 'none';
+    document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching this area...</p></div>';
+    
+    try {
+        const res = await fetch(`/api/search?bbox=${encodeURIComponent(bbox)}`);
+        const trails = await res.json();
+        if (!trails.length) {
+            document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found in this area. Try zooming out.</p>';
+            document.getElementById('resultCount').textContent = '0 trails found';
+            return;
+        }
+        currentTrails = trails;
+        // Render without fitting bounds (keep current view)
+        clearMarkers();
+        document.getElementById('resultCount').textContent = `${trails.length} trail${trails.length !== 1 ? 's' : ''} found`;
+        let html = '';
+        trails.forEach(t => {
+            const diff = difficultyLabel(t.difficulty);
+            const trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+            html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
+                <h3 class="tc-name">${t.name}</h3>
+                <div class="tc-tags">
+                    ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
+                    ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
+                    ${t.distance ? `<span class="tag">${t.distance}</span>` : ''}
+                </div>
+                <a href="${trailUrl}" class="tc-link">View Trail</a>
+            </div>`;
+            if (t.lat && t.lon) {
+                const m = L.marker([t.lat, t.lon])
+                    .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a>`);
+                markerCluster.addLayer(m);
+            }
+        });
+        document.getElementById('resultsList').innerHTML = html;
+    } catch(e) {
+        document.getElementById('resultsList').innerHTML = `<p class="muted">Error: ${e.message}</p>`;
+    }
+});
 
 document.getElementById('searchBtn').addEventListener('click', doSearch);
 

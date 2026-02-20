@@ -463,3 +463,31 @@ body {
 .trail-operator { font-size: 0.9rem; color: var(--brown-light); }
 .report-notes { font-size: 0.95rem; }
 .report-date { font-size: 0.8rem; color: var(--brown-light); }
+
+/* Search This Area button */
+.btn-search-map {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.2rem;
+    background: white;
+    color: var(--green);
+    border: 2px solid var(--green);
+    border-radius: 25px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transition: all 0.2s;
+}
+.btn-search-map:hover {
+    background: var(--green);
+    color: white;
+}
+.map-view { position: relative; }

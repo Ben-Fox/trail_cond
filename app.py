@@ -236,9 +236,22 @@ def api_search():
     state = request.args.get('state', '').strip()
     lat = request.args.get('lat', '').strip()
     lon = request.args.get('lon', '').strip()
+    bbox = request.args.get('bbox', '').strip()  # south,west,north,east
     
     try:
-        if lat and lon:
+        if bbox:
+            # Search by map bounding box
+            parts = bbox.split(',')
+            if len(parts) == 4:
+                s, w, n, e = parts
+                query = f'''[out:json][timeout:25];
+(
+  way["highway"~"path|footway"]["name"]({s},{w},{n},{e});
+  relation["route"="hiking"]["name"]({s},{w},{n},{e});
+);
+out center tags 100;'''
+                return jsonify(parse_osm_trails(overpass_query(query)))
+        elif lat and lon:
             # Near me search
             query = f'''[out:json][timeout:25];
 (
