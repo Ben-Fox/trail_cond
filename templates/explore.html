@@ -34,6 +34,14 @@
             <span id="resultCount" class="result-count"></span>
         </div>
         <div id="mapOverlayControls" class="map-overlay-controls">
+            <label class="map-toggle">
+                <select id="basemapSelect" class="basemap-select">
+                    <option value="carto">Standard</option>
+                    <option value="topo">Topographic</option>
+                    <option value="satellite">Satellite</option>
+                    <option value="terrain">Terrain</option>
+                </select>
+            </label>
             <label class="map-toggle"><input type="checkbox" id="conditionsOverlayToggle"> Projected Trail Conditions</label>
             <label class="map-toggle"><input type="checkbox" id="trailOverlayToggle"> Trail Routes</label>
             <div id="conditionsLegend" class="conditions-legend" style="display:none;">
@@ -67,10 +75,28 @@ let map, markerCluster, routeLayers = [];
 let currentView = 'map'; // default to map
 let currentTrails = [];
 
+const BASEMAPS = {
+    carto: {url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attr: '&copy; OSM &copy; CARTO', subdomains: 'abcd', maxZoom: 20},
+    topo: {url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attr: '&copy; OSM &copy; OpenTopoMap', subdomains: 'abc', maxZoom: 17},
+    satellite: {url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '&copy; Esri', maxZoom: 19},
+    terrain: {url: 'https://{s}.tile.thunderforest.com/landscape/{z}/{x}/{y}.png?apikey=6170aad10dfd42a38d4d8c709a536f38', attr: '&copy; Thunderforest &copy; OSM', subdomains: 'abc', maxZoom: 22},
+};
+let currentBasemap = null;
+
+function setBasemap(key) {
+    const cfg = BASEMAPS[key] || BASEMAPS.carto;
+    if (currentBasemap) map.removeLayer(currentBasemap);
+    currentBasemap = L.tileLayer(cfg.url, {attribution: cfg.attr, subdomains: cfg.subdomains || '', maxZoom: cfg.maxZoom || 20});
+    currentBasemap.addTo(map);
+    localStorage.setItem('tc_basemap', key);
+}
+
 function initMap() {
     if (map) return;
     map = L.map('map').setView([39.5, -98.5], 4);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {attribution:'&copy; OSM &copy; CARTO', subdomains:'abcd', maxZoom:20}).addTo(map);
+    const saved = localStorage.getItem('tc_basemap') || 'carto';
+    document.getElementById('basemapSelect').value = saved;
+    setBasemap(saved);
     markerCluster = L.markerClusterGroup({
         maxClusterRadius: 50,
         spiderfyOnMaxZoom: true,
@@ -281,6 +307,10 @@ function initMap() {
     document.getElementById('trailOverlayToggle').addEventListener('change', function() {
         if (this.checked) trailsOverlay.addTo(map);
         else if (map.hasLayer(trailsOverlay)) map.removeLayer(trailsOverlay);
+    });
+    
+    document.getElementById('basemapSelect').addEventListener('change', function() {
+        setBasemap(this.value);
     });
 }
 

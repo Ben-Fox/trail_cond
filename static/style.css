@@ -598,3 +598,20 @@ body {
     border-radius: 3px;
     display: inline-block;
 }
+
+/* Basemap selector */
+.basemap-select {
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--green);
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 6px;
+    padding: 3px 8px;
+    background: white;
+    cursor: pointer;
+    outline: none;
+}
+.basemap-select:focus {
+    border-color: var(--green-light);
+}
