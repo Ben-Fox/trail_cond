@@ -446,6 +446,40 @@ body {
 }
 
 /* Trail details grid */
+.trail-actions {
+    display: flex;
+    gap: 1rem;
+    margin: 1.25rem 0;
+}
+.trail-action-card {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    background: white;
+    border: 2px solid var(--sand);
+    border-radius: 12px;
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--brown);
+    font-weight: 700;
+    font-size: 1rem;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.trail-action-card:hover {
+    border-color: var(--green-light);
+    background: #f0faf4;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.trail-action-card svg { stroke: var(--green); flex-shrink: 0; }
+@media (max-width: 600px) {
+    .trail-actions { flex-direction: column; }
+}
+
 .trail-details-grid {
     display: flex;
     flex-wrap: wrap;

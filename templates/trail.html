@@ -74,6 +74,19 @@ async function loadTrail() {
     if (trail.operator) html += `<p class="trail-operator">Managed by: ${trail.operator}</p>`;
     if (trail.website) html += `<p><a href="${trail.website}" target="_blank" rel="noopener">Official Website</a></p>`;
     
+    // === ACTION CARDS ===
+    const reportUrl = `/report?trail=${encodeURIComponent(trail.name)}&id=${OSM_TYPE}:${OSM_ID}`;
+    html += `<div class="trail-actions">
+        <a href="${reportUrl}" class="trail-action-card">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>Submit Full Report</span>
+        </a>
+        <button class="trail-action-card" id="openQuickLogTrail">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Conditions Quick Log</span>
+        </button>
+    </div>`;
+    
     // === CONDITIONS SECTION (TOP) — Two columns ===
     html += `<div class="conditions-dual">`;
     
@@ -431,6 +444,15 @@ async function vote(id, type) {
     document.getElementById('reportsList').innerHTML = renderReports(await rr.json());
 }
 
-loadTrail();
+loadTrail().then(() => {
+    const qlBtn = document.getElementById('openQuickLogTrail');
+    if (qlBtn) {
+        qlBtn.addEventListener('click', function() {
+            // TODO: open Quick Log modal when built; for now go to report page
+            const reportUrl = `/report?trail=${encodeURIComponent(document.querySelector('h1')?.textContent || '')}&id=${REPORT_KEY}`;
+            window.location = reportUrl;
+        });
+    }
+});
 </script>
 {% endblock %}
