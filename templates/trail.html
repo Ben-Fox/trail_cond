@@ -60,11 +60,30 @@ async function loadTrail() {
     const typeMap = {'ground':'Dirt','dirt':'Dirt','earth':'Dirt','gravel':'Gravel','paved':'Paved','asphalt':'Paved','concrete':'Paved','compacted':'Compacted','fine_gravel':'Gravel','wood':'Boardwalk','grass':'Grass','sand':'Sand','rock':'Rock','paving_stones':'Paved'};
     const trailType = trail.surface ? (typeMap[trail.surface.toLowerCase()] || surfaceLabel) : '';
     
+    // Activity icons
+    const activitySvgs = {
+        hiking: '<svg class="activity-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4" r="2"/><path d="M7 21l3-9 2 3 2-3 3 9"/><path d="M10 12l-2-4h8l-2 4"/></svg>',
+        biking: '<svg class="activity-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17l3-7h4l2 3h3"/><circle cx="12" cy="7" r="1.5"/></svg>',
+        horse: '<svg class="activity-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16c0-4 3-7 7-7h2l3-4 2 1-2 3h2c2 0 3 2 3 4v3h-2v2h-2v-2H8v2H6v-2H4v-3z"/><circle cx="16" cy="11" r="1" fill="currentColor"/></svg>',
+    };
+    const activityLabels = {hiking: 'Hiking', biking: 'Biking', horse: 'Horseback'};
+    
+    // Use USGS length if available, otherwise computed
+    const usgsLength = trail.length_miles;
+    
     html += `<div class="trail-details-grid">`;
     if (trailType) html += `<div class="trail-detail-item"><span class="detail-label">Trail Type</span><span class="detail-value">${trailType}</span></div>`;
+    if (trail.usgs_trail_type) html += `<div class="trail-detail-item"><span class="detail-label">USGS Type</span><span class="detail-value">${trail.usgs_trail_type}</span></div>`;
     if (diff) html += `<div class="trail-detail-item"><span class="detail-label">Difficulty</span><span class="detail-value">${diff}</span></div>`;
-    if (distMi) html += `<div class="trail-detail-item"><span class="detail-label">Length</span><span class="detail-value">${distMi} mi (${trail.distance_km} km)</span></div>`;
+    if (usgsLength) html += `<div class="trail-detail-item"><span class="detail-label">Length</span><span class="detail-value">${usgsLength} mi</span></div>`;
+    else if (distMi) html += `<div class="trail-detail-item"><span class="detail-label">Length</span><span class="detail-value">${distMi} mi (${trail.distance_km} km)</span></div>`;
     else if (distKm) html += `<div class="trail-detail-item"><span class="detail-label">Length</span><span class="detail-value">${distKm}</span></div>`;
+    if (trail.activities && trail.activities.length) {
+        const actHtml = trail.activities.map(a => `<span class="activity-tag">${activitySvgs[a] || ''} ${activityLabels[a] || a}</span>`).join(' ');
+        html += `<div class="trail-detail-item"><span class="detail-label">Activities</span><span class="detail-value">${actHtml}</span></div>`;
+    }
+    if (trail.maintainer) html += `<div class="trail-detail-item"><span class="detail-label">Maintainer</span><span class="detail-value">${trail.maintainer}</span></div>`;
+    if (trail.designation) html += `<div class="trail-detail-item"><span class="detail-label">Designation</span><span class="detail-value">${trail.designation}</span></div>`;
     if (trail.access) html += `<div class="trail-detail-item"><span class="detail-label">Access</span><span class="detail-value">${trail.access}</span></div>`;
     if (trail.wheelchair) html += `<div class="trail-detail-item"><span class="detail-label">Wheelchair</span><span class="detail-value">${trail.wheelchair}</span></div>`;
     if (trail.network) html += `<div class="trail-detail-item"><span class="detail-label">Network</span><span class="detail-value">${trail.network}</span></div>`;
@@ -143,7 +162,8 @@ async function loadTrail() {
     }
     
     // OSM attribution
-    html += `<p class="muted" style="margin-top:2rem;font-size:0.8rem">Trail data from <a href="https://www.openstreetmap.org/${OSM_TYPE}/${OSM_ID}" target="_blank">OpenStreetMap</a></p>`;
+    const usgsAttr = trail.usgs_enriched ? ' &amp; <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank">USGS National Map</a>' : '';
+    html += `<p class="muted" style="margin-top:2rem;font-size:0.8rem">Trail data from <a href="https://www.openstreetmap.org/${OSM_TYPE}/${OSM_ID}" target="_blank">OpenStreetMap</a>${usgsAttr}</p>`;
     
     document.getElementById('trailContent').innerHTML = html;
     

@@ -370,6 +370,16 @@ function difficultyLabel(sac) {
     return m[sac] || '';
 }
 
+function trailActivityIcons(activities) {
+    if (!activities || !activities.length) return '';
+    const icons = {
+        hiking: '<svg class="activity-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Hiking"><circle cx="12" cy="4" r="2"/><path d="M7 21l3-9 2 3 2-3 3 9"/><path d="M10 12l-2-4h8l-2 4"/></svg>',
+        biking: '<svg class="activity-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Biking"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17l3-7h4l2 3h3"/><circle cx="12" cy="7" r="1.5"/></svg>',
+        horse: '<svg class="activity-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Horseback"><path d="M4 16c0-4 3-7 7-7h2l3-4 2 1-2 3h2c2 0 3 2 3 4v3h-2v2h-2v-2H8v2H6v-2H4v-3z"/><circle cx="16" cy="11" r="1" fill="currentColor"/></svg>',
+    };
+    return activities.map(a => icons[a] || '').join('');
+}
+
 function showView(view) {
     currentView = view;
     document.getElementById('mapView').style.display = view === 'map' ? 'block' : 'none';
@@ -572,13 +582,17 @@ function renderResults(trails, skipFitBounds) {
         let trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
         if (t.way_ids && t.way_ids.length > 1) trailUrl += `?way_ids=${t.way_ids.join(',')}`;
         
+        const actIcons = trailActivityIcons(t.activities || []);
+        const lengthTag = t.length_miles ? `<span class="tag">${t.length_miles} mi</span>` : '';
+        
         html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
             <h3 class="tc-name">${t.name}</h3>
             <div class="tc-tags">
                 ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
+                ${lengthTag}
                 ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
-                ${t.distance ? `<span class="tag">${t.distance}</span>` : ''}
-                <span class="tag tag-type">${t.osm_type}</span>
+                ${t.distance && !t.length_miles ? `<span class="tag">${t.distance}</span>` : ''}
+                ${actIcons}
             </div>
             ${t.desc ? `<p class="tc-desc">${t.desc}</p>` : ''}
             <a href="${trailUrl}" class="tc-link">View Trail →</a>
@@ -689,12 +703,16 @@ searchMapBtn.addEventListener('click', async () => {
             const diff = difficultyLabel(t.difficulty);
             let trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
             if (t.way_ids && t.way_ids.length > 1) trailUrl += `?way_ids=${t.way_ids.join(',')}`;
+            const actIcons2 = trailActivityIcons(t.activities || []);
+            const lengthTag2 = t.length_miles ? `<span class="tag">${t.length_miles} mi</span>` : '';
             html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
                 <h3 class="tc-name">${t.name}</h3>
                 <div class="tc-tags">
                     ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
+                    ${lengthTag2}
                     ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
-                    ${t.distance ? `<span class="tag">${t.distance}</span>` : ''}
+                    ${t.distance && !t.length_miles ? `<span class="tag">${t.distance}</span>` : ''}
+                    ${actIcons2}
                 </div>
                 <a href="${trailUrl}" class="tc-link">View Trail</a>
             </div>`;

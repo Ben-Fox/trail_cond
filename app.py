@@ -4,8 +4,12 @@ import requests
 import hashlib
 import time
 import os
+import logging
 from math import radians, sin, cos, sqrt, atan2
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from database import get_db, init_db
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -26,6 +30,171 @@ http_session.headers.update({'User-Agent': 'TrailCondish/1.0'})
 RIDB_KEY = 'b4cf5317-0be1-4127-97de-5bed2d3b0b68'
 RIDB_BASE = 'https://ridb.recreation.gov/api/v1'
 OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
+
+# USGS National Map Trails API
+USGS_TRAILS_URL = 'https://carto.nationalmap.gov/arcgis/rest/services/transportation/MapServer/37/query'
+usgs_session = requests.Session()
+usgs_session.headers.update({'User-Agent': 'TrailCondish/1.0'})
+_usgs_cache = {}
+USGS_CACHE_TTL = 600  # 10 minutes
+_usgs_executor = ThreadPoolExecutor(max_workers=2)
+
+def _usgs_cache_key(params):
+    return hashlib.md5(str(sorted(params.items())).encode()).hexdigest()
+
+def usgs_query_bbox(south, west, north, east, trail_type='all', return_geometry=False, max_results=500):
+    """Query USGS trails API for a bounding box. Returns list of trail dicts."""
+    params = {
+        'geometry': f'{west},{south},{east},{north}',
+        'geometryType': 'esriGeometryEnvelope',
+        'inSR': '4326',
+        'outSR': '4326',
+        'outFields': 'name,trailtype,hikerpedestrian,bicycle,packsaddle,lengthmiles,primarytrailmaintainer,nationaltraildesignation',
+        'returnGeometry': 'true' if return_geometry else 'false',
+        'resultRecordCount': min(max_results, 2000),
+        'f': 'geojson' if return_geometry else 'json',
+    }
+    
+    # Don't filter by activity type in USGS — many trails have null for activity fields
+    # We'll use the data for enrichment regardless
+    params['where'] = "name IS NOT NULL AND name <> ''"
+    
+    cache_key = _usgs_cache_key(params)
+    now = time.time()
+    
+    # Check cache
+    if cache_key in _usgs_cache:
+        ts, data = _usgs_cache[cache_key]
+        if now - ts < USGS_CACHE_TTL:
+            return data
+    
+    # Prune stale cache
+    if len(_usgs_cache) > 200:
+        stale = [k for k, (ts, _) in _usgs_cache.items() if now - ts > USGS_CACHE_TTL]
+        for k in stale:
+            del _usgs_cache[k]
+    
+    try:
+        r = usgs_session.get(USGS_TRAILS_URL, params=params, timeout=5)
+        r.raise_for_status()
+        raw = r.json()
+        
+        trails = []
+        if return_geometry:
+            # GeoJSON format
+            for feat in raw.get('features', []):
+                props = feat.get('properties', {})
+                geom = feat.get('geometry', {})
+                t = _parse_usgs_trail(props)
+                if geom and geom.get('paths'):
+                    t['usgs_geometry'] = geom['paths']
+                elif geom and geom.get('coordinates'):
+                    t['usgs_geometry'] = geom['coordinates']
+                trails.append(t)
+        else:
+            for feat in raw.get('features', []):
+                props = feat.get('attributes', {})
+                trails.append(_parse_usgs_trail(props))
+        
+        _usgs_cache[cache_key] = (now, trails)
+        return trails
+    except Exception as e:
+        logger.warning(f'USGS query failed: {e}')
+        return []
+
+def _parse_usgs_trail(props):
+    """Parse USGS trail attributes into a normalized dict."""
+    activities = []
+    if props.get('hikerpedestrian') == 'Yes':
+        activities.append('hiking')
+    if props.get('bicycle') == 'Yes':
+        activities.append('biking')
+    if props.get('packsaddle') == 'Yes':
+        activities.append('horse')
+    
+    length_miles = props.get('lengthmiles')
+    if length_miles is not None:
+        try:
+            length_miles = round(float(length_miles), 1)
+        except (ValueError, TypeError):
+            length_miles = None
+    
+    return {
+        'name': (props.get('name') or '').strip(),
+        'usgs_trail_type': props.get('trailtype', ''),
+        'length_miles': length_miles,
+        'activities': activities,
+        'maintainer': (props.get('primarytrailmaintainer') or '').strip(),
+        'designation': (props.get('nationaltraildesignation') or '').strip(),
+        'source': 'usgs',
+    }
+
+def _haversine_km_simple(lat1, lon1, lat2, lon2):
+    """Quick haversine distance in km."""
+    rlat1, rlon1, rlat2, rlon2 = radians(lat1), radians(lon1), radians(lat2), radians(lon2)
+    dlat, dlon = rlat2 - rlat1, rlon2 - rlon1
+    a = sin(dlat/2)**2 + cos(rlat1)*cos(rlat2)*sin(dlon/2)**2
+    return 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
+
+def merge_usgs_into_osm(osm_trails, usgs_trails):
+    """Merge USGS trail data into OSM results. Enrich matching trails, add unique USGS ones."""
+    if not usgs_trails:
+        return osm_trails
+    
+    # Build name-based index for OSM trails
+    osm_by_name = {}
+    for t in osm_trails:
+        norm = t.get('name', '').strip().lower()
+        if norm:
+            if norm not in osm_by_name:
+                osm_by_name[norm] = []
+            osm_by_name[norm].append(t)
+    
+    matched_usgs = set()
+    
+    # Group USGS trails by name, pick best (longest) for each name
+    usgs_by_name = {}
+    for ut in usgs_trails:
+        uname = ut['name'].strip().lower()
+        if not uname:
+            continue
+        if uname not in usgs_by_name or (ut.get('length_miles') or 0) > (usgs_by_name[uname].get('length_miles') or 0):
+            usgs_by_name[uname] = ut
+    
+    for uname, ut in usgs_by_name.items():
+        # Try exact name match first
+        if uname in osm_by_name:
+            for osm_t in osm_by_name[uname]:
+                _enrich_osm_with_usgs(osm_t, ut)
+            continue
+        
+        # Try substring match (USGS name in OSM name or vice versa)
+        for norm, osm_list in osm_by_name.items():
+            if len(uname) > 4 and len(norm) > 4 and (uname in norm or norm in uname):
+                for osm_t in osm_list:
+                    _enrich_osm_with_usgs(osm_t, ut)
+                break
+    
+    # Don't add unmatched USGS trails as standalone results (they lack coordinates for map display)
+    return osm_trails
+
+def _enrich_osm_with_usgs(osm_trail, usgs_trail):
+    """Add USGS metadata to an OSM trail dict."""
+    if usgs_trail.get('length_miles'):
+        osm_trail['length_miles'] = usgs_trail['length_miles']
+    if usgs_trail.get('activities'):
+        osm_trail['activities'] = usgs_trail['activities']
+    if usgs_trail.get('maintainer'):
+        osm_trail['maintainer'] = usgs_trail['maintainer']
+    if usgs_trail.get('usgs_trail_type'):
+        osm_trail['usgs_trail_type'] = usgs_trail['usgs_trail_type']
+    if usgs_trail.get('designation'):
+        osm_trail['designation'] = usgs_trail['designation']
+    osm_trail['usgs_enriched'] = True
+
+def fetch_usgs_for_bbox(south, west, north, east, trail_type='all'):
+    """Non-blocking USGS fetch using thread pool. Returns future."""
+    return _usgs_executor.submit(usgs_query_bbox, south, west, north, east, trail_type)
 
 STATE_NAMES = {
     'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California',
@@ -466,20 +635,33 @@ def api_search():
     bbox = request.args.get('bbox', '').strip()
     trail_type = request.args.get('type', 'all').strip()
     tp = get_trail_query_parts(trail_type)
+    usgs_future = None
     
     try:
         if bbox:
             parts = bbox.split(',')
             if len(parts) == 4:
                 s, w, n, e = parts
+                # Fire USGS query in parallel
+                usgs_future = fetch_usgs_for_bbox(float(s), float(w), float(n), float(e), trail_type)
                 query = f'''[out:json][timeout:25];
 (
   way{tp['ways']}["name"]({s},{w},{n},{e});
   relation{tp['rels']}["name"]({s},{w},{n},{e});
 );
 out tags geom 100;'''
-                return jsonify(parse_osm_trails(overpass_query(query)))
+                results = parse_osm_trails(overpass_query(query))
+                # Merge USGS (wait up to 3s, don't block if slow)
+                try:
+                    usgs_trails = usgs_future.result(timeout=3)
+                    results = merge_usgs_into_osm(results, usgs_trails)
+                except Exception:
+                    pass
+                return jsonify(results)
         elif lat and lon:
+            usgs_future = fetch_usgs_for_bbox(
+                float(lat) - 0.1, float(lon) - 0.1,
+                float(lat) + 0.1, float(lon) + 0.1, trail_type)
             query = f'''[out:json][timeout:25];
 (
   way{tp['ways']}["name"](around:8000,{lat},{lon});
@@ -497,6 +679,7 @@ out tags geom 50;'''
         elif q:
             geo = geocode(q)
             results = []
+            usgs_future = None
             
             if geo and geo['bbox']:
                 south, north, west, east = geo['bbox']
@@ -510,6 +693,8 @@ out tags geom 50;'''
                     pad_lon = (0.2 - lon_span) / 2
                     west -= pad_lon
                     east += pad_lon
+                # Fire USGS in parallel
+                usgs_future = fetch_usgs_for_bbox(south, west, north, east, trail_type)
                 bbox_str = f"{south},{west},{north},{east}"
                 bbox_query = f'''[out:json][timeout:25];
 (
@@ -522,6 +707,10 @@ out tags geom 100;'''
                 except Exception:
                     pass
             elif geo:
+                # Fire USGS for area around the point
+                usgs_future = fetch_usgs_for_bbox(
+                    geo['lat'] - 0.15, geo['lon'] - 0.15,
+                    geo['lat'] + 0.15, geo['lon'] + 0.15, trail_type)
                 around_query = f'''[out:json][timeout:25];
 (
   way{tp['ways']}["name"](around:15000,{geo['lat']},{geo['lon']});
@@ -546,11 +735,26 @@ out tags geom 20;'''
             except Exception:
                 pass
             
+            # Merge USGS results (non-blocking, 3s timeout)
+            if usgs_future:
+                try:
+                    usgs_trails = usgs_future.result(timeout=3)
+                    results = merge_usgs_into_osm(results, usgs_trails)
+                except Exception:
+                    pass
+            
             return jsonify(results[:100])
         else:
             return jsonify([])
         
         results = parse_osm_trails(overpass_query(query))
+        # Merge USGS if future exists (lat/lon search)
+        if usgs_future:
+            try:
+                usgs_trails = usgs_future.result(timeout=3)
+                results = merge_usgs_into_osm(results, usgs_trails)
+            except Exception:
+                pass
         return jsonify(results[:100])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -643,6 +847,30 @@ out geom tags;'''
             'operator': tags.get('operator', ''),
             'website': tags.get('website', tags.get('url', '')),
         }
+        
+        # Enrich with USGS data if we have coordinates
+        if lat and lon:
+            try:
+                usgs_trails = usgs_query_bbox(lat - 0.05, lon - 0.05, lat + 0.05, lon + 0.05)
+                trail_name = result['name'].strip().lower()
+                for ut in usgs_trails:
+                    uname = ut['name'].strip().lower()
+                    if uname and (uname in trail_name or trail_name in uname):
+                        if ut.get('length_miles'):
+                            result['length_miles'] = ut['length_miles']
+                        if ut.get('activities'):
+                            result['activities'] = ut['activities']
+                        if ut.get('maintainer'):
+                            result['maintainer'] = ut['maintainer']
+                        if ut.get('usgs_trail_type'):
+                            result['usgs_trail_type'] = ut['usgs_trail_type']
+                        if ut.get('designation'):
+                            result['designation'] = ut['designation']
+                        result['usgs_enriched'] = True
+                        break
+            except Exception:
+                pass
+        
         cache_response(cache_key, result)
         return jsonify(result)
     except Exception as e:
