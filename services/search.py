@@ -1,3 +1,4 @@
+import re
 import time
 from flask import Blueprint, request, jsonify
 
@@ -48,6 +49,12 @@ TRAIL_TYPE_QUERIES = {
 
 def get_trail_query_parts(trail_type):
     return TRAIL_TYPE_QUERIES.get(trail_type, TRAIL_TYPE_QUERIES['all'])
+
+
+def _sanitize_overpass(s):
+    """Sanitize user input for safe use in Overpass QL regex queries."""
+    # Remove characters that could break Overpass QL syntax
+    return re.sub(r'["\\\];(){}\n\r]', '', s)[:100]
 
 
 def geocode(query):
@@ -220,7 +227,7 @@ def api_search():
     usgs_future = None
 
     try:
-        if q and not bbox and not (lat and lon and not q):
+        if q and not bbox:
             # Text query takes priority — handle it first
             geo = geocode(q)
             results = []
@@ -264,10 +271,11 @@ out center tags 100;'''
                 results = parse_osm_trails(overpass_query(around_query))
 
             if not results:
+                safe_q = _sanitize_overpass(q)
                 name_query = f'''[out:json][timeout:25];
 (
-  way["highway"~"path|footway|track|bridleway|cycleway"]["name"~"{q}",i];
-  relation["route"="hiking"]["name"~"{q}",i];
+  way["highway"~"path|footway|track|bridleway|cycleway"]["name"~"{safe_q}",i];
+  relation["route"="hiking"]["name"~"{safe_q}",i];
 );
 out center tags 20;'''
                 name_results = parse_osm_trails(overpass_query(name_query))

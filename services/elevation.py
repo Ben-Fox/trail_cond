@@ -15,6 +15,11 @@ def api_elevation():
     try:
         lat_list = lats.split(',')
         lon_list = lons.split(',')
+        if len(lat_list) != len(lon_list):
+            return jsonify({'error': 'Mismatched lats/lons count'}), 400
+        # Validate all are numeric
+        for v in lat_list + lon_list:
+            float(v.strip())
 
         elevations = []
         for i in range(0, len(lat_list), 100):
