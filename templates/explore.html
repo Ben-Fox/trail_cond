@@ -83,6 +83,7 @@ let map, markerCluster, routeLayers = [];
 let currentView = 'map'; // default to map
 let currentTrails = [];
 let activeTrailType = 'all';
+let programmaticMove = false; // distinguish user pans from flyTo/fitBounds
 
 // Trail type filter chips
 document.querySelectorAll('.filter-chip').forEach(chip => {
@@ -444,8 +445,14 @@ async function fetchAutocomplete(q) {
                 if (el.dataset.type === 'trail' && (osmType === 'way' || osmType === 'relation') && osmId) {
                     window.location = `/trail/${osmType}/${osmId}`;
                 } else {
-                    // Area or unresolvable trail — search using the name
+                    // Area — fly to location immediately, then search
                     searchInput.value = el.dataset.name;
+                    const acLat = parseFloat(el.dataset.lat);
+                    const acLon = parseFloat(el.dataset.lon);
+                    if (acLat && acLon) {
+                        programmaticMove = true;
+                        map.flyTo([acLat, acLon], 12, {duration: 1.2});
+                    }
                     doSearch();
                 }
             });
@@ -472,20 +479,43 @@ async function doSearch() {
     
     try {
         const res = await fetch('/api/search?' + params);
-        const trails = await res.json();
-        if (trails.error) {
-            document.getElementById('resultsList').innerHTML = `<p class="muted">Error: ${trails.error}</p>`;
+        const data = await res.json();
+        
+        // Handle both formats: array (bbox/latlon) or object with center/bbox (text search)
+        const trails = Array.isArray(data) ? data : (data.trails || []);
+        const center = data.center;
+        const geoBbox = data.bbox; // [south, north, west, east]
+        
+        if (data.error) {
+            document.getElementById('resultsList').innerHTML = `<p class="muted">Error: ${data.error}</p>`;
             return;
         }
         if (!trails.length) {
+            // Still fly to the searched location even if no trails found
+            if (geoBbox) {
+                programmaticMove = true;
+                map.flyToBounds([[geoBbox[0], geoBbox[2]], [geoBbox[1], geoBbox[3]]], {padding: [50,50], maxZoom: 14, duration: 1.2});
+            } else if (center) {
+                programmaticMove = true;
+                map.flyTo([center.lat, center.lon], 12, {duration: 1.2});
+            }
             document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found</p>';
             document.getElementById('resultCount').textContent = '0 trails found';
             return;
         }
         
+        // Fly to searched location first, then render results
+        if (geoBbox) {
+            programmaticMove = true;
+            map.flyToBounds([[geoBbox[0], geoBbox[2]], [geoBbox[1], geoBbox[3]]], {padding: [50,50], maxZoom: 14, duration: 1.2});
+        } else if (center) {
+            programmaticMove = true;
+            map.flyTo([center.lat, center.lon], 12, {duration: 1.2});
+        }
+        
         currentTrails = trails;
         sessionStorage.setItem('trailcondish_results', JSON.stringify(trails));
-        renderResults(trails);
+        renderResults(trails, !!(center || geoBbox)); // skip fitBounds if we already flew
     } catch(e) {
         document.getElementById('resultsList').innerHTML = `<p class="muted">Search failed: ${e.message}</p>`;
     }
@@ -611,7 +641,10 @@ function renderResults(trails, skipFitBounds) {
     });
     
     document.getElementById('resultsList').innerHTML = html;
-    if (bounds.length && !skipFitBounds) map.fitBounds(bounds, {padding: [30, 30]});
+    if (bounds.length && !skipFitBounds) {
+        programmaticMove = true;
+        map.fitBounds(bounds, {padding: [30, 30]});
+    }
     
     // Route loading disabled to avoid Overpass rate limits
     // Routes are visible on the Waymarked Trails overlay instead
@@ -668,10 +701,14 @@ if (savedMap) {
     } catch(e) {}
 }
 
-// Show "Search This Area" button when user pans/zooms the map
+// Show "Search This Area" button only after USER pans/zooms (not programmatic)
 const searchMapBtn = document.getElementById('searchMapBtn');
-let userMoved = false;
 map.on('moveend', () => {
+    if (programmaticMove) {
+        programmaticMove = false;
+        searchMapBtn.style.display = 'none';
+        return;
+    }
     if (map.getZoom() >= 9) {
         searchMapBtn.style.display = 'flex';
     } else {
@@ -683,6 +720,7 @@ searchMapBtn.addEventListener('click', async () => {
     const bounds = map.getBounds();
     const bbox = `${bounds.getSouth().toFixed(5)},${bounds.getWest().toFixed(5)},${bounds.getNorth().toFixed(5)},${bounds.getEast().toFixed(5)}`;
     searchMapBtn.style.display = 'none';
+    searchMapBtn.innerHTML = '<div class="spinner-small"></div> Searching...';
     document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching this area...</p></div>';
     
     try {
@@ -695,36 +733,12 @@ searchMapBtn.addEventListener('click', async () => {
             return;
         }
         currentTrails = trails;
-        // Render without fitting bounds (keep current view)
-        clearMarkers();
-        document.getElementById('resultCount').textContent = `${trails.length} trail${trails.length !== 1 ? 's' : ''} found`;
-        let html = '';
-        trails.forEach(t => {
-            const diff = difficultyLabel(t.difficulty);
-            let trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
-            if (t.way_ids && t.way_ids.length > 1) trailUrl += `?way_ids=${t.way_ids.join(',')}`;
-            const actIcons2 = trailActivityIcons(t.activities || []);
-            const lengthTag2 = t.length_miles ? `<span class="tag">${t.length_miles} mi</span>` : '';
-            html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
-                <h3 class="tc-name">${t.name}</h3>
-                <div class="tc-tags">
-                    ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
-                    ${lengthTag2}
-                    ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
-                    ${t.distance && !t.length_miles ? `<span class="tag">${t.distance}</span>` : ''}
-                    ${actIcons2}
-                </div>
-                <a href="${trailUrl}" class="tc-link">View Trail</a>
-            </div>`;
-            if (t.lat && t.lon) {
-                const m = L.marker([t.lat, t.lon])
-                    .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a>`);
-                markerCluster.addLayer(m);
-            }
-        });
-        document.getElementById('resultsList').innerHTML = html;
+        sessionStorage.setItem('trailcondish_results', JSON.stringify(trails));
+        renderResults(trails, true); // skip fitBounds — keep current view
     } catch(e) {
         document.getElementById('resultsList').innerHTML = `<p class="muted">Error: ${e.message}</p>`;
+    } finally {
+        searchMapBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> Search This Area`;
     }
 });
 

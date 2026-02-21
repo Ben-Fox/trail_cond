@@ -350,13 +350,7 @@ def parse_osm_trails(data):
             if key not in seen_rel:
                 seen_rel.add(key)
                 lat = lon = None
-                # Use first geometry point (trailhead) if available, else center
-                if 'members' in el:
-                    for m in el['members']:
-                        if m.get('type') == 'way' and 'geometry' in m and m['geometry']:
-                            lat, lon = m['geometry'][0]['lat'], m['geometry'][0]['lon']
-                            break
-                if lat is None and 'center' in el:
+                if 'center' in el:
                     lat, lon = el['center'].get('lat'), el['center'].get('lon')
                 relations.append({
                     'id': key, 'osm_type': 'relation', 'osm_id': osm_id,
@@ -369,11 +363,7 @@ def parse_osm_trails(data):
         elif osm_type == 'way':
             norm = name.strip().lower()
             way_el = {'id': osm_id, 'lat': None, 'lon': None, 'tags': tags, 'name': name}
-            # Use first geometry point (trailhead/start) instead of center
-            if 'geometry' in el and el['geometry']:
-                way_el['lat'] = el['geometry'][0]['lat']
-                way_el['lon'] = el['geometry'][0]['lon']
-            elif 'center' in el:
+            if 'center' in el:
                 way_el['lat'] = el['center'].get('lat')
                 way_el['lon'] = el['center'].get('lon')
             if norm not in way_groups:
@@ -649,7 +639,7 @@ def api_search():
   way{tp['ways']}["name"]({s},{w},{n},{e});
   relation{tp['rels']}["name"]({s},{w},{n},{e});
 );
-out tags geom 100;'''
+out center tags 100;'''
                 results = parse_osm_trails(overpass_query(query))
                 # Merge USGS (wait up to 3s, don't block if slow)
                 try:
@@ -667,7 +657,7 @@ out tags geom 100;'''
   way{tp['ways']}["name"](around:8000,{lat},{lon});
   relation{tp['rels']}["name"](around:8000,{lat},{lon});
 );
-out tags geom;'''
+out center tags;'''
         elif state and state in STATE_NAMES:
             state_name = STATE_NAMES[state]
             query = f'''[out:json][timeout:25];
@@ -675,7 +665,7 @@ area["name"="{state_name}"]["admin_level"="4"]->.searchArea;
 (
   relation{tp['rels']}["name"](area.searchArea);
 );
-out tags geom 50;'''
+out center tags 50;'''
         elif q:
             geo = geocode(q)
             results = []
@@ -701,7 +691,7 @@ out tags geom 50;'''
   way{tp['ways']}["name"]({bbox_str});
   relation{tp['rels']}["name"]({bbox_str});
 );
-out tags geom 100;'''
+out center tags 100;'''
                 try:
                     results = parse_osm_trails(overpass_query(bbox_query))
                 except Exception:
@@ -716,7 +706,7 @@ out tags geom 100;'''
   way{tp['ways']}["name"](around:15000,{geo['lat']},{geo['lon']});
   relation{tp['rels']}["name"](around:15000,{geo['lat']},{geo['lon']});
 );
-out tags geom 100;'''
+out center tags 100;'''
                 try:
                     results = parse_osm_trails(overpass_query(around_query))
                 except Exception:
@@ -726,7 +716,7 @@ out tags geom 100;'''
             try:
                 name_query = f'''[out:json][timeout:10];
 relation{tp['rels']}["name"~"{q}",i];
-out tags geom 20;'''
+out center tags 20;'''
                 name_results = parse_osm_trails(overpass_query(name_query))
                 seen_ids = {r['id'] for r in results}
                 for r in name_results:
@@ -743,7 +733,13 @@ out tags geom 20;'''
                 except Exception:
                     pass
             
-            return jsonify(results[:100])
+            # Return geocoded center/bbox so client can fly to the location
+            response = {'trails': results[:100]}
+            if geo:
+                response['center'] = {'lat': geo['lat'], 'lon': geo['lon']}
+                if geo.get('bbox'):
+                    response['bbox'] = geo['bbox']  # [south, north, west, east]
+            return jsonify(response)
         else:
             return jsonify([])
         
