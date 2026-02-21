@@ -585,7 +585,7 @@ async function doSearch() {
         
         currentTrails = trails;
         sessionStorage.setItem('trailcondish_results', JSON.stringify(trails));
-        renderResults(trails, !!(center || geoBbox)); // skip fitBounds if we already flew
+        await renderResults(trails, !!(center || geoBbox)); // skip fitBounds if we already flew
     } catch(e) {
         document.getElementById('resultsList').innerHTML = `<p class="muted">Search failed: ${e.message}</p>`;
     }
@@ -669,7 +669,7 @@ async function loadTrailRoute(trail) {
     }
 }
 
-function renderResults(trails, skipFitBounds) {
+async function renderResults(trails, skipFitBounds) {
     clearMarkers();
     const bounds = [];
     
@@ -736,18 +736,31 @@ function renderResults(trails, skipFitBounds) {
     
     document.getElementById('resultsList').innerHTML = html;
     
-    // Add markers to map IMMEDIATELY (pins appear fast)
-    const allMarkers = [];
-    markerMap.forEach(m => allMarkers.push(m));
-    markerCluster.addLayers(allMarkers);
-    
     if (bounds.length && !skipFitBounds) {
         programmaticMove = true;
         map.fitBounds(bounds, {padding: [30, 30]});
     }
     
-    // Fetch conditions in background, update pins when ready (non-blocking)
-    updateMarkerConditions(trails);
+    // Fetch conditions FIRST, then add markers with correct icons (no flash)
+    await updateMarkerConditions(trails);
+    
+    // Apply fetched conditions to markers before adding to map
+    for (const t of trails.filter(t => t.lat && t.lon)) {
+        const cached = conditionCache[condCacheKey(t.lat, t.lon)];
+        if (cached) {
+            const mKey = `${t.osm_type}:${t.osm_id}`;
+            const marker = markerMap.get(mKey);
+            if (marker) {
+                marker.setIcon(getConditionIcon(cached.condition));
+                marker._trailCondition = cached.condition;
+            }
+        }
+    }
+    
+    // NOW add markers to map with correct icons already set
+    const allMarkers = [];
+    markerMap.forEach(m => allMarkers.push(m));
+    markerCluster.addLayers(allMarkers);
     
     // Route loading disabled to avoid Overpass rate limits
     // Routes are visible on the Waymarked Trails overlay instead
