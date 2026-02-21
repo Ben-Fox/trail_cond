@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#2d6a4f"/>
+  <!-- Topographic contour lines -->
+  <ellipse cx="280" cy="230" rx="180" ry="160" fill="none" stroke="#52b788" stroke-width="4" opacity="0.4"/>
+  <ellipse cx="280" cy="230" rx="150" ry="130" fill="none" stroke="#52b788" stroke-width="4" opacity="0.5"/>
+  <ellipse cx="280" cy="230" rx="120" ry="100" fill="none" stroke="#52b788" stroke-width="4" opacity="0.6"/>
+  <ellipse cx="280" cy="230" rx="90" ry="70" fill="none" stroke="#52b788" stroke-width="4" opacity="0.7"/>
+  <ellipse cx="280" cy="230" rx="60" ry="45" fill="none" stroke="#52b788" stroke-width="4" opacity="0.8"/>
+  <ellipse cx="280" cy="230" rx="30" ry="20" fill="none" stroke="#52b788" stroke-width="4"/>
+  <!-- Map pin cutting through the topo lines -->
+  <g transform="translate(200, 260)">
+    <path d="M0,-180 C40,-180 70,-150 70,-110 C70,-70 0,20 0,20 C0,20 -70,-70 -70,-110 C-70,-150 -40,-180 0,-180Z" 
+          fill="#e76f51" stroke="#f5f0e8" stroke-width="8"/>
+    <circle cx="0" cy="-115" r="25" fill="#f5f0e8"/>
+  </g>
+  <!-- "Trail Condish" abbreviated -->
+  <text x="256" y="460" text-anchor="middle" font-family="sans-serif" font-weight="900" font-size="72" fill="#f5f0e8" letter-spacing="4">CONDISH</text>
+</svg>

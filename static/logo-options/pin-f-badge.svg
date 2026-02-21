@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Hybrid: pin shape but with a flat badge bottom for text -->
+  <path d="M256,40 C350,40 415,110 415,200 C415,270 350,340 290,380 L272,430 L256,470 L240,430 L222,380 C162,340 97,270 97,200 C97,110 162,40 256,40Z" 
+        fill="#7f5539" stroke="#5c3a1e" stroke-width="6"/>
+  <!-- Inner scene circle -->
+  <circle cx="256" cy="195" r="130" fill="#2d6a4f"/>
+  <circle cx="256" cy="195" r="125" fill="none" stroke="#b08968" stroke-width="3"/>
+  <!-- Layered mountains inside -->
+  <path d="M130,280 L195,190 L230,225 L280,155 L320,210 L350,180 L385,280Z" fill="#1b4332"/>
+  <path d="M130,290 L180,230 L220,260 L265,195 L310,245 L385,290Z" fill="#2d6a4f" opacity="0.7"/>
+  <!-- Snow -->
+  <path d="M280,155 L270,175 L290,175Z" fill="#f5f0e8" opacity="0.8"/>
+  <!-- River/trail through valley -->
+  <path d="M170,285 Q210,265 245,270 Q280,275 310,260 Q340,248 365,255" 
+        fill="none" stroke="#52b788" stroke-width="6" stroke-linecap="round"/>
+  <!-- Trail condition indicators -->
+  <circle cx="210" cy="268" r="7" fill="#52b788" stroke="#f5f0e8" stroke-width="2"/>
+  <circle cx="275" cy="273" r="7" fill="#e9c46a" stroke="#f5f0e8" stroke-width="2"/>
+  <circle cx="340" cy="255" r="7" fill="#e76f51" stroke="#f5f0e8" stroke-width="2"/>
+  <!-- Circular text band -->
+  <text font-family="sans-serif" font-weight="800" font-size="22" fill="#f5f0e8" letter-spacing="6">
+    <textPath href="#none">TRAIL CONDISH</textPath>
+  </text>
+  <!-- Top arc text -->
+  <path id="topArc" d="M145,195 A115,115 0 0,1 367,195" fill="none"/>
+  <text font-family="sans-serif" font-weight="900" font-size="24" fill="#f5f0e8" letter-spacing="5">
+    <textPath href="#topArc" startOffset="50%" text-anchor="middle">TRAIL CONDISH</textPath>
+  </text>
+</svg>

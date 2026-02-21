@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="pinGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#52b788"/>
+      <stop offset="100%" stop-color="#2d6a4f"/>
+    </linearGradient>
+  </defs>
+  <!-- Pin body -->
+  <path d="M256,60 C340,60 400,120 400,200 C400,300 256,460 256,460 C256,460 112,300 112,200 C112,120 172,60 256,60Z" 
+        fill="url(#pinGrad)" stroke="#1b4332" stroke-width="8"/>
+  <!-- Mountain silhouette inside pin -->
+  <path d="M150,280 L210,180 L240,210 L290,140 L340,210 L362,280Z" fill="#1b4332" opacity="0.5"/>
+  <path d="M150,280 L210,180 L240,210 L290,140 L340,210 L362,280Z" fill="none" stroke="#f5f0e8" stroke-width="5" stroke-linejoin="round"/>
+  <!-- Snow caps -->
+  <path d="M290,140 L275,165 L305,165Z" fill="#f5f0e8" opacity="0.8"/>
+  <path d="M210,180 L200,198 L220,198Z" fill="#f5f0e8" opacity="0.6"/>
+  <!-- Winding trail through mountains -->
+  <path d="M200,275 Q230,250 250,255 Q280,260 290,240 Q300,225 320,230" 
+        fill="none" stroke="#b08968" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 10"/>
+</svg>

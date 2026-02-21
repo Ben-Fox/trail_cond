@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 120 135">
+  <defs><clipPath id="cc"><path d="M60,8 C85,8 105,28 105,55 C105,80 60,130 60,130 C60,130 15,80 15,55 C15,28 35,8 60,8Z"/></clipPath></defs>
+  <path d="M60,8 C85,8 105,28 105,55 C105,80 60,130 60,130 C60,130 15,80 15,55 C15,28 35,8 60,8Z" fill="#2d6a4f" stroke="#1b4332" stroke-width="2"/>
+  <g clip-path="url(#cc)">
+    <!-- Sunny sky -->
+    <rect x="15" y="8" width="90" height="50" fill="#e9c46a" opacity="0.25"/>
+    <!-- Sun -->
+    <circle cx="75" cy="28" r="14" fill="#e9c46a" opacity="0.7"/>
+    <g stroke="#e9c46a" stroke-width="2" stroke-linecap="round" opacity="0.5">
+      <line x1="75" y1="10" x2="75" y2="14"/><line x1="75" y1="42" x2="75" y2="46"/>
+      <line x1="57" y1="28" x2="61" y2="28"/><line x1="89" y1="28" x2="93" y2="28"/>
+      <line x1="63" y1="16" x2="65" y2="18"/><line x1="85" y1="38" x2="87" y2="40"/>
+    </g>
+    <!-- Mountains -->
+    <path d="M10,75 L35,45 L50,58 L70,32 L90,55 L110,75Z" fill="#1b4332"/>
+    <path d="M10,80 L30,60 L50,72 L65,55 L85,68 L110,80Z" fill="#2d6a4f" opacity="0.8"/>
+    <!-- Dry trail - solid, clear -->
+    <path d="M25,105 Q45,88 60,85 Q78,82 95,88" fill="none" stroke="#b08968" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <path d="M60,8 C85,8 105,28 105,55 C105,80 60,130 60,130 C60,130 15,80 15,55 C15,28 35,8 60,8Z" fill="none" stroke="#f5f0e8" stroke-width="1.5"/>
+  <!-- Label -->
+</svg>

@@ -85,6 +85,73 @@ let currentTrails = [];
 let activeTrailType = 'all';
 let programmaticMove = false; // distinguish user pans from flyTo/fitBounds
 
+// Condition pin icons
+const conditionCache = {}; // key: "lat,lon" -> {condition, reasons}
+const markerMap = new Map(); // key: trail osm_type:osm_id -> L.marker
+
+function getConditionIcon(condition) {
+    const iconMap = {
+        'clear': '/static/pins/cond-clear.svg',
+        'dry': '/static/pins/cond-clear.svg',
+        'wet': '/static/pins/cond-wet.svg',
+        'muddy': '/static/pins/cond-muddy.svg',
+        'snowy': '/static/pins/cond-snowy.svg',
+        'icy': '/static/pins/cond-icy.svg',
+        'closed': '/static/pins/cond-closed.svg',
+    };
+    return L.icon({
+        iconUrl: iconMap[condition] || iconMap['clear'],
+        iconSize: [40, 50],
+        iconAnchor: [20, 50],
+        popupAnchor: [0, -50],
+    });
+}
+
+const defaultIcon = getConditionIcon('clear');
+
+async function updateMarkerConditions(trails) {
+    const withCoords = trails.filter(t => t.lat && t.lon);
+    if (!withCoords.length) return;
+    
+    // Filter out already-cached trails
+    const toFetch = withCoords.filter(t => {
+        const key = `${parseFloat(t.lat).toFixed(2)},${parseFloat(t.lon).toFixed(2)}`;
+        return !conditionCache[key];
+    });
+    
+    if (toFetch.length > 0) {
+        // Batch in groups of 20 (API limit)
+        for (let i = 0; i < toFetch.length; i += 20) {
+            const batch = toFetch.slice(i, i + 20);
+            const lats = batch.map(t => parseFloat(t.lat).toFixed(4)).join(',');
+            const lons = batch.map(t => parseFloat(t.lon).toFixed(4)).join(',');
+            try {
+                const res = await fetch(`/api/weather/grid?lats=${lats}&lons=${lons}`);
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    for (let j = 0; j < batch.length; j++) {
+                        const key = `${parseFloat(batch[j].lat).toFixed(2)},${parseFloat(batch[j].lon).toFixed(2)}`;
+                        conditionCache[key] = data[j] || {condition: 'clear', reasons: []};
+                    }
+                }
+            } catch(e) { /* keep default icons */ }
+        }
+    }
+    
+    // Update all marker icons from cache
+    for (const t of withCoords) {
+        const key = `${parseFloat(t.lat).toFixed(2)},${parseFloat(t.lon).toFixed(2)}`;
+        const cached = conditionCache[key];
+        if (cached) {
+            const mKey = `${t.osm_type}:${t.osm_id}`;
+            const marker = markerMap.get(mKey);
+            if (marker) {
+                marker.setIcon(getConditionIcon(cached.condition));
+            }
+        }
+    }
+}
+
 // Trail type filter chips
 document.querySelectorAll('.filter-chip').forEach(chip => {
     chip.addEventListener('click', function() {
@@ -354,6 +421,7 @@ function initMap() {
 
 function clearMarkers() {
     if (markerCluster) markerCluster.clearLayers();
+    markerMap.clear();
     routeLayers.forEach(l => map.removeLayer(l));
     routeLayers = [];
 }
@@ -629,13 +697,19 @@ function renderResults(trails, skipFitBounds) {
         </div>`;
         
         if (t.lat && t.lon) {
-            const m = L.marker([t.lat, t.lon])
+            // Use cached condition icon if available, otherwise default
+            const cacheKey = `${parseFloat(t.lat).toFixed(2)},${parseFloat(t.lon).toFixed(2)}`;
+            const cached = conditionCache[cacheKey];
+            const icon = cached ? getConditionIcon(cached.condition) : defaultIcon;
+            
+            const m = L.marker([t.lat, t.lon], {icon: icon})
                 .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`);
             m._trailData = t;
             m.on('click', function() {
                 loadTrailRoute(this._trailData);
             });
             markerCluster.addLayer(m);
+            markerMap.set(`${t.osm_type}:${t.osm_id}`, m);
             bounds.push([t.lat, t.lon]);
         }
     });
@@ -645,6 +719,9 @@ function renderResults(trails, skipFitBounds) {
         programmaticMove = true;
         map.fitBounds(bounds, {padding: [30, 30]});
     }
+    
+    // Fetch conditions and update pin icons (non-blocking)
+    updateMarkerConditions(trails);
     
     // Route loading disabled to avoid Overpass rate limits
     // Routes are visible on the Waymarked Trails overlay instead

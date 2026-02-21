@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#2d6a4f"/>
+  <!-- Winding trail path with condition dots (Waze-inspired) -->
+  <path d="M120 440 Q180 380 200 320 Q220 260 280 240 Q340 220 340 160 Q340 100 380 60" 
+        fill="none" stroke="#f5f0e8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Dashed center line (road/trail feel) -->
+  <path d="M120 440 Q180 380 200 320 Q220 260 280 240 Q340 220 340 160 Q340 100 380 60" 
+        fill="none" stroke="#2d6a4f" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 18"/>
+  <!-- Condition dots along the trail -->
+  <circle cx="155" cy="385" r="16" fill="#52b788"/> <!-- green = good -->
+  <circle cx="210" cy="300" r="16" fill="#52b788"/>
+  <circle cx="265" cy="245" r="16" fill="#e9c46a"/> <!-- yellow = caution -->
+  <circle cx="335" cy="175" r="16" fill="#e76f51"/> <!-- red = hazard -->
+  <circle cx="370" cy="80" r="16" fill="#e76f51"/>
+  <!-- Small mountain silhouette in background -->
+  <path d="M30 450 L130 280 L180 340 L260 200 L340 320 L400 180 L490 450Z" fill="#1b4332" opacity="0.3"/>
+</svg>

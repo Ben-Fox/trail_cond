@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="80" fill="#2d6a4f"/>
+  <!-- Trail/path winding upward -->
+  <path d="M160 420 Q200 340 240 320 Q300 290 280 230 Q260 170 300 140 Q340 110 320 60" 
+        fill="none" stroke="#b08968" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
+  <!-- Map pin with condition indicator -->
+  <g transform="translate(256, 240)">
+    <path d="M0,-120 C50,-120 90,-80 90,-40 C90,10 0,100 0,100 C0,100 -90,10 -90,-40 C-90,-80 -50,-120 0,-120Z" 
+          fill="#f5f0e8" stroke="none"/>
+    <!-- Inner circle with checkmark (condition = good) -->
+    <circle cx="0" cy="-45" r="40" fill="#52b788"/>
+    <polyline points="-18,-45 -6,-33 20,-57" fill="none" stroke="#f5f0e8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

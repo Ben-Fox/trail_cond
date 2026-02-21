@@ -183,12 +183,20 @@ async function loadTrail() {
         const baseCfg = BASEMAPS[savedBase] || BASEMAPS.carto;
         let currentBase = L.tileLayer(baseCfg.url, {attribution: baseCfg.attr, subdomains: baseCfg.subdomains || '', maxZoom: baseCfg.maxZoom || 20}).addTo(map);
         
+        // Add condition pin marker (will be updated after weather loads)
+        const condPinIcon = L.icon({
+            iconUrl: '/static/pins/cond-clear.svg',
+            iconSize: [40, 50], iconAnchor: [20, 50], popupAnchor: [0, -50]
+        });
+        trailConditionPin = L.marker([trail.lat, trail.lon], {icon: condPinIcon})
+            .addTo(map).bindPopup(trail.name);
+        
         if (trail.geometry && trail.geometry.length > 1) {
             const latlngs = trail.geometry.map(p => [p.lat, p.lon]);
             const polyline = L.polyline(latlngs, {color: '#c44536', weight: 4, opacity: 0.8}).addTo(map);
             map.fitBounds(polyline.getBounds(), {padding: [30, 30]});
         } else {
-            L.marker([trail.lat, trail.lon]).addTo(map).bindPopup(trail.name).openPopup();
+            trailConditionPin.openPopup();
         }
         
         const hikingOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.7, attribution:'Waymarked Trails'});
@@ -359,6 +367,7 @@ async function loadTrail() {
     }
     
     // Load weather conditions
+    let trailConditionPin = null; // reference to update pin icon
     if (trail.lat && trail.lon) {
         const wr = await fetch(`/api/weather/history?lat=${trail.lat}&lon=${trail.lon}`);
         const w = await wr.json();
@@ -374,6 +383,20 @@ async function loadTrail() {
             // Condition badge
             const inf = w.inference;
             whtml += `<div class="condition-badge" style="background:${inf.color}">${inf.condition.toUpperCase()}</div>`;
+            
+            // Update map pin to match condition
+            if (trailConditionPin) {
+                const condIconMap = {
+                    'clear': '/static/pins/cond-clear.svg', 'dry': '/static/pins/cond-clear.svg',
+                    'wet': '/static/pins/cond-wet.svg', 'muddy': '/static/pins/cond-muddy.svg',
+                    'snowy': '/static/pins/cond-snowy.svg', 'icy': '/static/pins/cond-icy.svg',
+                    'closed': '/static/pins/cond-closed.svg',
+                };
+                trailConditionPin.setIcon(L.icon({
+                    iconUrl: condIconMap[inf.condition] || condIconMap['clear'],
+                    iconSize: [40, 50], iconAnchor: [20, 50], popupAnchor: [0, -50],
+                }));
+            }
             
             // Reasoning
             whtml += `<div class="condition-reasons">`;

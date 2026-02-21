@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Outer pin - cream -->
+  <path d="M256,55 C348,55 410,118 410,205 C410,310 256,465 256,465 C256,465 102,310 102,205 C102,118 164,55 256,55Z" 
+        fill="#f5f0e8" stroke="#b08968" stroke-width="10"/>
+  <!-- Inner pin - green -->
+  <path d="M256,90 C325,90 375,140 375,205 C375,285 256,410 256,410 C256,410 137,285 137,205 C137,140 187,90 256,90Z" 
+        fill="#2d6a4f"/>
+  <!-- Minimal mountain + trail mark -->
+  <path d="M180,270 L230,190 L256,220 L300,160 L340,270Z" fill="none" stroke="#f5f0e8" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- Bold trail line through center -->
+  <path d="M200,265 Q240,245 256,250 Q280,255 310,240" 
+        fill="none" stroke="#52b788" stroke-width="10" stroke-linecap="round"/>
+  <!-- Dot at trail center -->
+  <circle cx="256" cy="250" r="10" fill="#f5f0e8"/>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Pin body - warm brown -->
+  <path d="M256,60 C340,60 400,120 400,200 C400,300 256,460 256,460 C256,460 112,300 112,200 C112,120 172,60 256,60Z" 
+        fill="#7f5539" stroke="#5c3a1e" stroke-width="8"/>
+  <!-- Inner circle cutout -->
+  <circle cx="256" cy="195" r="105" fill="#f5f0e8"/>
+  <!-- Two pine trees -->
+  <g transform="translate(220,145)">
+    <polygon points="0,-60 -25,10 -15,5 -30,40 25,40 10,5 20,10" fill="#2d6a4f"/>
+    <rect x="-4" y="40" width="8" height="18" fill="#b08968"/>
+  </g>
+  <g transform="translate(290,155)">
+    <polygon points="0,-50 -22,5 -12,2 -26,35 22,35 8,2 18,5" fill="#2d6a4f"/>
+    <rect x="-3" y="35" width="6" height="15" fill="#b08968"/>
+  </g>
+  <!-- Trail path between trees -->
+  <path d="M195,260 Q230,240 256,245 Q280,250 320,235" 
+        fill="none" stroke="#b08968" stroke-width="5" stroke-linecap="round"/>
+  <!-- Small condition dot -->
+  <circle cx="256" cy="245" r="8" fill="#52b788"/>
+</svg>

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="pinClip2">
+      <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z"/>
+    </clipPath>
+  </defs>
+  <!-- Pin body -->
+  <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z" 
+        fill="#2d6a4f" stroke="#1b4332" stroke-width="8"/>
+  <!-- Scene inside pin -->
+  <g clip-path="url(#pinClip2)">
+    <!-- Sky -->
+    <rect x="100" y="50" width="320" height="160" fill="#e9c46a" opacity="0.25"/>
+    <!-- Sun -->
+    <circle cx="310" cy="115" r="32" fill="#e9c46a" opacity="0.6"/>
+    <!-- Mountains - back -->
+    <path d="M80,255 L180,150 L230,195 L310,105 L380,175 L430,255Z" fill="#1b4332"/>
+    <!-- Snow -->
+    <path d="M310,105 L295,135 L325,135Z" fill="#f5f0e8" opacity="0.7"/>
+    <!-- Mountains - front -->
+    <path d="M80,275 L160,200 L210,235 L270,170 L340,225 L430,275Z" fill="#2d6a4f"/>
+    <path d="M270,170 L258,192 L282,192Z" fill="#f5f0e8" opacity="0.5"/>
+    <!-- Trail -->
+    <path d="M140,350 Q190,305 220,295 Q270,280 290,268 Q330,248 370,258" 
+          fill="none" stroke="#f5f0e8" stroke-width="7" stroke-linecap="round" opacity="0.8"/>
+    <!-- Condition status bar at bottom of pin -->
+    <rect x="90" y="320" width="340" height="50" fill="#1b4332" opacity="0.7" rx="4"/>
+    <!-- Condition dots with mini labels -->
+    <circle cx="170" cy="345" r="12" fill="#52b788"/>
+    <circle cx="256" cy="345" r="12" fill="#e9c46a"/>
+    <circle cx="342" cy="345" r="12" fill="#e76f51"/>
+    <!-- Tiny condition lines connecting dots -->
+    <line x1="182" y1="345" x2="244" y2="345" stroke="#52b788" stroke-width="3" stroke-linecap="round"/>
+    <line x1="268" y1="345" x2="330" y2="345" stroke="#e9c46a" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <!-- Pin border -->
+  <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z" 
+        fill="none" stroke="#f5f0e8" stroke-width="6"/>
+</svg>

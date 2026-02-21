@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="pinClip4">
+      <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z"/>
+    </clipPath>
+  </defs>
+  <!-- Pin body -->
+  <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z" 
+        fill="#2d6a4f" stroke="#1b4332" stroke-width="8"/>
+  <g clip-path="url(#pinClip4)">
+    <!-- Sky -->
+    <rect x="100" y="50" width="320" height="180" fill="#e9c46a" opacity="0.2"/>
+    <!-- Sun -->
+    <circle cx="310" cy="100" r="28" fill="#e9c46a" opacity="0.55"/>
+    <!-- Mountains -->
+    <path d="M80,240 L180,140 L230,185 L310,95 L380,165 L430,240Z" fill="#1b4332"/>
+    <path d="M310,95 L297,122 L323,122Z" fill="#f5f0e8" opacity="0.7"/>
+    <path d="M80,260 L160,190 L210,225 L270,160 L340,215 L430,260Z" fill="#2d6a4f"/>
+    <!-- Trail -->
+    <path d="M140,340 Q195,295 230,285 Q275,270 300,255 Q340,238 375,248" 
+          fill="none" stroke="#f5f0e8" stroke-width="7" stroke-linecap="round" opacity="0.7"/>
+    <!-- Condition gauge arc at top of pin -->
+    <g transform="translate(256,82)">
+      <!-- Gauge background arc -->
+      <path d="M-55,0 A55,55 0 0,1 55,0" fill="none" stroke="#1b4332" stroke-width="14" stroke-linecap="round" opacity="0.5"/>
+      <!-- Green segment (good) -->
+      <path d="M-55,0 A55,55 0 0,1 -15,-53" fill="none" stroke="#52b788" stroke-width="14" stroke-linecap="round"/>
+      <!-- Yellow segment (fair) -->
+      <path d="M-15,-53 A55,55 0 0,1 30,-46" fill="none" stroke="#e9c46a" stroke-width="14" stroke-linecap="round"/>
+      <!-- Red segment (poor) -->
+      <path d="M30,-46 A55,55 0 0,1 55,0" fill="none" stroke="#e76f51" stroke-width="14" stroke-linecap="round"/>
+      <!-- Needle pointing to green/good -->
+      <line x1="0" y1="5" x2="-35" y2="-40" stroke="#f5f0e8" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="0" cy="5" r="8" fill="#f5f0e8"/>
+    </g>
+  </g>
+  <!-- Pin border -->
+  <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z" 
+        fill="none" stroke="#f5f0e8" stroke-width="6"/>
+</svg>

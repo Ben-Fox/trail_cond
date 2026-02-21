@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 120 135">
+  <defs><clipPath id="cs"><path d="M60,8 C85,8 105,28 105,55 C105,80 60,130 60,130 C60,130 15,80 15,55 C15,28 35,8 60,8Z"/></clipPath></defs>
+  <path d="M60,8 C85,8 105,28 105,55 C105,80 60,130 60,130 C60,130 15,80 15,55 C15,28 35,8 60,8Z" fill="#4a90d9" stroke="#3670b0" stroke-width="2"/>
+  <g clip-path="url(#cs)">
+    <!-- Snowy sky -->
+    <rect x="15" y="8" width="90" height="55" fill="#c8d8e8" opacity="0.3"/>
+    <!-- Snow clouds -->
+    <ellipse cx="50" cy="22" rx="24" ry="11" fill="#bcc8d4" opacity="0.6"/>
+    <ellipse cx="76" cy="18" rx="18" ry="9" fill="#bcc8d4" opacity="0.5"/>
+    <!-- Snowflakes -->
+    <g fill="#f5f0e8" opacity="0.8">
+      <circle cx="35" cy="38" r="2.5"/><circle cx="52" cy="42" r="2"/>
+      <circle cx="70" cy="36" r="2.5"/><circle cx="88" cy="40" r="2"/>
+      <circle cx="42" cy="48" r="1.5"/><circle cx="62" cy="46" r="2"/>
+      <circle cx="78" cy="50" r="1.5"/><circle cx="30" cy="52" r="2"/>
+    </g>
+    <!-- Snow-covered mountains -->
+    <path d="M10,75 L35,42 L50,55 L70,28 L90,52 L110,75Z" fill="#f5f0e8"/>
+    <path d="M10,75 L35,55 L50,62 L70,48 L90,60 L110,75Z" fill="#4a90d9" opacity="0.4"/>
+    <!-- Snowy trail - white with hints of path -->
+    <path d="M25,108 Q45,90 60,86 Q78,82 95,88" fill="none" stroke="#f5f0e8" stroke-width="5" stroke-linecap="round" opacity="0.9"/>
+    <path d="M25,108 Q45,90 60,86 Q78,82 95,88" fill="none" stroke="#b0c4de" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 6"/>
+    <!-- Snow piles on trail edges -->
+    <ellipse cx="40" cy="97" rx="8" ry="4" fill="#f5f0e8" opacity="0.7"/>
+    <ellipse cx="72" cy="84" rx="7" ry="3" fill="#f5f0e8" opacity="0.6"/>
+  </g>
+  <path d="M60,8 C85,8 105,28 105,55 C105,80 60,130 60,130 C60,130 15,80 15,55 C15,28 35,8 60,8Z" fill="none" stroke="#f5f0e8" stroke-width="1.5"/>
+</svg>

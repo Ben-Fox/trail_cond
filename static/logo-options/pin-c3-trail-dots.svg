@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="pinClip3">
+      <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z"/>
+    </clipPath>
+  </defs>
+  <!-- Pin body -->
+  <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z" 
+        fill="#2d6a4f" stroke="#1b4332" stroke-width="8"/>
+  <g clip-path="url(#pinClip3)">
+    <!-- Sky -->
+    <rect x="100" y="50" width="320" height="160" fill="#87CEEB" opacity="0.15"/>
+    <!-- Sun -->
+    <circle cx="300" cy="110" r="30" fill="#e9c46a" opacity="0.6"/>
+    <!-- Mountains - back layer -->
+    <path d="M80,260 L175,155 L225,200 L305,110 L375,180 L430,260Z" fill="#1b4332"/>
+    <path d="M305,110 L292,138 L318,138Z" fill="#f5f0e8" opacity="0.7"/>
+    <!-- Mountains - front layer -->
+    <path d="M80,280 L155,205 L205,240 L265,175 L335,230 L430,280Z" fill="#2d6a4f"/>
+    <path d="M265,175 L254,195 L276,195Z" fill="#f5f0e8" opacity="0.5"/>
+    <!-- Bold winding trail with LARGE condition dots -->
+    <path d="M130,360 Q185,310 215,298 Q260,280 285,265 Q325,245 370,255" 
+          fill="none" stroke="#b08968" stroke-width="10" stroke-linecap="round"/>
+    <!-- Condition dots - big and prominent -->
+    <circle cx="175" cy="315" r="18" fill="#52b788" stroke="#f5f0e8" stroke-width="4"/>
+    <circle cx="255" cy="278" r="18" fill="#52b788" stroke="#f5f0e8" stroke-width="4"/>
+    <circle cx="335" cy="252" r="18" fill="#e76f51" stroke="#f5f0e8" stroke-width="4"/>
+    <!-- Checkmark in green dots -->
+    <polyline points="167,316 173,322 185,310" fill="none" stroke="#f5f0e8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="247,279 253,285 265,273" fill="none" stroke="#f5f0e8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Warning in red dot -->
+    <line x1="335" y1="244" x2="335" y2="254" stroke="#f5f0e8" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="335" cy="261" r="2" fill="#f5f0e8"/>
+  </g>
+  <!-- Pin border -->
+  <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z" 
+        fill="none" stroke="#f5f0e8" stroke-width="6"/>
+</svg>

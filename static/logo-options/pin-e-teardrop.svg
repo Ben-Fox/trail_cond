@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#87CEEB" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#2d6a4f" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded teardrop/organic shape -->
+  <path d="M256,45 C360,45 420,130 420,210 C420,290 360,370 256,470 C152,370 92,290 92,210 C92,130 152,45 256,45Z" 
+        fill="#2d6a4f" stroke="#1b4332" stroke-width="6"/>
+  <!-- Sky band -->
+  <ellipse cx="256" cy="140" rx="130" ry="60" fill="url(#skyGrad)"/>
+  <!-- Stylized mountain range -->
+  <path d="M130,300 L190,200 L220,235 L280,160 L320,220 L350,190 L390,300" 
+        fill="#1b4332" stroke="none"/>
+  <!-- Snow caps -->
+  <path d="M280,160 L268,185 L292,185Z" fill="#f5f0e8" opacity="0.8"/>
+  <path d="M350,190 L340,208 L360,208Z" fill="#f5f0e8" opacity="0.6"/>
+  <!-- Trail carved through -->
+  <path d="M160,310 Q200,280 240,290 Q280,300 300,280 Q330,260 360,270" 
+        fill="none" stroke="#b08968" stroke-width="7" stroke-linecap="round"/>
+  <!-- Three condition dots -->
+  <circle cx="200" cy="286" r="9" fill="#52b788"/>
+  <circle cx="270" cy="293" r="9" fill="#52b788"/>
+  <circle cx="340" cy="272" r="9" fill="#e76f51"/>
+  <!-- Small star/sparkle (trail magic!) -->
+  <g transform="translate(330,130)" fill="#e9c46a">
+    <polygon points="0,-14 3,-4 14,-4 5,3 8,14 0,7 -8,14 -5,3 -14,-4 -3,-4"/>
+  </g>
+</svg>

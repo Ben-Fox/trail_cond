@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 120 135">
+  <defs><clipPath id="cx"><path d="M60,8 C85,8 105,28 105,55 C105,80 60,130 60,130 C60,130 15,80 15,55 C15,28 35,8 60,8Z"/></clipPath></defs>
+  <path d="M60,8 C85,8 105,28 105,55 C105,80 60,130 60,130 C60,130 15,80 15,55 C15,28 35,8 60,8Z" fill="#555" stroke="#333" stroke-width="2"/>
+  <g clip-path="url(#cx)">
+    <!-- Dark/muted scene -->
+    <rect x="15" y="8" width="90" height="130" fill="#444" opacity="0.3"/>
+    <!-- Muted mountains -->
+    <path d="M10,75 L35,42 L50,55 L70,28 L90,52 L110,75Z" fill="#444"/>
+    <path d="M10,80 L30,60 L50,70 L65,55 L85,65 L110,80Z" fill="#555" opacity="0.7"/>
+    <!-- Blocked trail -->
+    <path d="M25,108 Q45,90 60,86 Q78,82 95,88" fill="none" stroke="#666" stroke-width="4" stroke-linecap="round"/>
+    <!-- Downed tree across trail -->
+    <line x1="40" y1="80" x2="82" y2="95" stroke="#8B6914" stroke-width="5" stroke-linecap="round"/>
+    <line x1="55" y1="83" x2="50" y2="75" stroke="#8B6914" stroke-width="2" stroke-linecap="round"/>
+    <line x1="68" y1="88" x2="73" y2="80" stroke="#8B6914" stroke-width="2" stroke-linecap="round"/>
+    <!-- Big X -->
+    <g transform="translate(60,48)" stroke="#e76f51" stroke-width="5" stroke-linecap="round">
+      <line x1="-16" y1="-16" x2="16" y2="16"/>
+      <line x1="16" y1="-16" x2="-16" y2="16"/>
+    </g>
+  </g>
+  <path d="M60,8 C85,8 105,28 105,55 C105,80 60,130 60,130 C60,130 15,80 15,55 C15,28 35,8 60,8Z" fill="none" stroke="#f5f0e8" stroke-width="1.5"/>
+</svg>

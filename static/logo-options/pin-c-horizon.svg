@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="pinClip">
+      <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z"/>
+    </clipPath>
+  </defs>
+  <!-- Pin body -->
+  <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z" 
+        fill="#2d6a4f" stroke="#1b4332" stroke-width="8"/>
+  <!-- Scene inside pin (clipped) -->
+  <g clip-path="url(#pinClip)">
+    <!-- Sky gradient effect -->
+    <rect x="100" y="50" width="320" height="180" fill="#e9c46a" opacity="0.3"/>
+    <!-- Sun -->
+    <circle cx="300" cy="120" r="35" fill="#e9c46a" opacity="0.7"/>
+    <!-- Mountain range - back -->
+    <path d="M80,260 L180,150 L230,200 L310,110 L380,180 L430,260Z" fill="#1b4332"/>
+    <!-- Mountain range - front -->
+    <path d="M80,280 L160,200 L210,240 L270,170 L340,230 L430,280Z" fill="#2d6a4f"/>
+    <!-- Snow on peaks -->
+    <path d="M310,110 L295,140 L325,140Z" fill="#f5f0e8" opacity="0.7"/>
+    <path d="M270,170 L258,192 L282,192Z" fill="#f5f0e8" opacity="0.5"/>
+    <!-- Winding trail in foreground -->
+    <path d="M140,360 Q190,310 220,300 Q270,285 290,270 Q330,250 360,260" 
+          fill="none" stroke="#f5f0e8" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+    <!-- Condition dots on trail -->
+    <circle cx="190" cy="308" r="10" fill="#52b788"/>
+    <circle cx="260" cy="283" r="10" fill="#52b788"/>
+    <circle cx="330" cy="258" r="10" fill="#e9c46a"/>
+  </g>
+  <!-- Pin border (on top) -->
+  <path d="M256,50 C345,50 410,115 410,200 C410,305 256,470 256,470 C256,470 102,305 102,200 C102,115 167,50 256,50Z" 
+        fill="none" stroke="#f5f0e8" stroke-width="6"/>
+</svg>

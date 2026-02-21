@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#f5f0e8"/>
+  <!-- Trail marker / blaze shape (like national park signs) -->
+  <g transform="translate(256,260)">
+    <!-- Shield/badge shape -->
+    <path d="M0,-200 L140,-140 L140,60 Q140,160 0,200 Q-140,160 -140,60 L-140,-140 Z" 
+          fill="#2d6a4f" stroke="#b08968" stroke-width="12"/>
+    <!-- Mountain inside shield -->
+    <path d="M-80,80 L-20,-40 L10,10 L70,-80 L100,80Z" fill="#1b4332"/>
+    <path d="M-80,80 L-20,-40 L10,10 L70,-80 L100,80Z" fill="none" stroke="#52b788" stroke-width="4"/>
+    <!-- Sun/weather indicator -->
+    <circle cx="0" cy="-100" r="30" fill="#e9c46a"/>
+    <g stroke="#e9c46a" stroke-width="6" stroke-linecap="round">
+      <line x1="0" y1="-145" x2="0" y2="-155"/>
+      <line x1="35" y1="-125" x2="42" y2="-132"/>
+      <line x1="-35" y1="-125" x2="-42" y2="-132"/>
+      <line x1="45" y1="-100" x2="55" y2="-100"/>
+      <line x1="-45" y1="-100" x2="-55" y2="-100"/>
+    </g>
+    <!-- TC text -->
+    <text x="0" y="145" text-anchor="middle" font-family="sans-serif" font-weight="900" font-size="60" fill="#b08968" letter-spacing="8">TC</text>
+  </g>
+</svg>
