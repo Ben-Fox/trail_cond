@@ -1,5 +1,6 @@
-const CACHE_NAME = 'trailcondish-v4';
-const TILE_CACHE = 'trailcondish-tiles-v3';
+const CACHE_NAME = 'trailcondish-v5';
+const TILE_CACHE = 'trailcondish-tiles-v4';
+const API_CACHE = 'trailcondish-api-v1';
 const MAX_TILE_CACHE = 2000; // max cached tiles
 
 // Static assets to pre-cache
@@ -20,6 +21,16 @@ const TILE_PATTERNS = [
     'tile.waymarkedtrails.org',
 ];
 
+// API paths to cache with stale-while-revalidate (weather doesn't change fast)
+const SWR_API_PATTERNS = [
+    '/api/weather/grid',
+    '/api/weather/history',
+    '/api/airquality',
+    '/api/tiles/conditions/',
+    '/api/tiles/airquality/',
+];
+const SWR_MAX_AGE_MS = 15 * 60 * 1000; // 15 min — serve stale, revalidate in background
+
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
@@ -31,10 +42,14 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
-            Promise.all(keys.filter(k => k !== CACHE_NAME && k !== TILE_CACHE).map(k => caches.delete(k)))
+            Promise.all(keys.filter(k => k !== CACHE_NAME && k !== TILE_CACHE && k !== API_CACHE).map(k => caches.delete(k)))
         ).then(() => self.clients.claim())
     );
 });
+
+function isSWRApi(url) {
+    return SWR_API_PATTERNS.some(p => url.includes(p));
+}
 
 function isTileRequest(url) {
     return TILE_PATTERNS.some(p => url.includes(p));
@@ -55,6 +70,24 @@ self.addEventListener('fetch', event => {
                         }
                         return response;
                     }).catch(() => cached);
+                })
+            )
+        );
+    } else if (event.request.method === 'GET' && isSWRApi(url)) {
+        // API requests: stale-while-revalidate
+        // Serve cached instantly, update cache in background
+        event.respondWith(
+            caches.open(API_CACHE).then(cache =>
+                cache.match(event.request).then(cached => {
+                    const fetchPromise = fetch(event.request).then(response => {
+                        if (response.ok) {
+                            cache.put(event.request, response.clone());
+                        }
+                        return response;
+                    }).catch(() => cached);
+                    
+                    // Return cached immediately if available, otherwise wait for network
+                    return cached || fetchPromise;
                 })
             )
         );

@@ -25,6 +25,10 @@ for bp in ALL_BLUEPRINTS:
 def add_cache_headers(response):
     if request.path.startswith('/static/'):
         response.headers['Cache-Control'] = 'public, max-age=86400'
+    elif request.path.startswith('/api/tiles/'):
+        response.headers['Cache-Control'] = 'public, max-age=1800, stale-while-revalidate=3600'
+    elif request.path.startswith('/api/weather/') or request.path.startswith('/api/airquality'):
+        response.headers['Cache-Control'] = 'public, max-age=300, stale-while-revalidate=900'
     elif request.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'public, max-age=60'
     response.headers['X-Content-Type-Options'] = 'nosniff'

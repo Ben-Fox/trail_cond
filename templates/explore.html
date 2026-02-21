@@ -814,10 +814,49 @@ map.on('moveend', () => {
     }
     if (map.getZoom() >= 9) {
         searchMapBtn.style.display = 'flex';
+        // Prefetch weather grid for this viewport so conditions are instant when search completes
+        prefetchWeatherGrid();
     } else {
         searchMapBtn.style.display = 'none';
     }
 });
+
+// Prefetch weather for current viewport — fires when "Search This Area" becomes visible
+let prefetchTimer = null;
+function prefetchWeatherGrid() {
+    clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(() => {
+        const b = map.getBounds();
+        const s = b.getSouth(), n = b.getNorth(), w = b.getWest(), e = b.getEast();
+        // Sample 9 points across viewport (3x3 grid)
+        const lats = [], lons = [];
+        for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+                const lat = s + (n - s) * (r + 0.5) / 3;
+                const lon = w + (e - w) * (c + 0.5) / 3;
+                const key = condCacheKey(lat, lon);
+                if (!conditionCache[key]) {
+                    lats.push(lat.toFixed(4));
+                    lons.push(lon.toFixed(4));
+                }
+            }
+        }
+        if (lats.length > 0) {
+            // Fire-and-forget prefetch (don't await)
+            fetch(`/api/weather/grid?lats=${lats.join(',')}&lons=${lons.join(',')}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (Array.isArray(data)) {
+                        for (let i = 0; i < data.length; i++) {
+                            const key = `${parseFloat(lats[i]).toFixed(3)},${parseFloat(lons[i]).toFixed(3)}`;
+                            conditionCache[key] = data[i] || {condition: 'clear', reasons: []};
+                        }
+                    }
+                })
+                .catch(() => {}); // silent prefetch
+        }
+    }, 500); // debounce 500ms after pan stops
+}
 
 searchMapBtn.addEventListener('click', async () => {
     const bounds = map.getBounds();
