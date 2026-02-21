@@ -615,3 +615,229 @@ body {
 .basemap-select:focus {
     border-color: var(--green-light);
 }
+
+/* Secondary button */
+.btn-secondary {
+    display: inline-block;
+    padding: 12px 32px;
+    border-radius: 12px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    text-decoration: none;
+    background: transparent;
+    color: white;
+    border: 2px solid white;
+    margin-left: 12px;
+    transition: background 0.2s, color 0.2s;
+}
+.btn-secondary:hover {
+    background: white;
+    color: var(--green);
+}
+
+/* Report page */
+.report-page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+.report-page h1 {
+    color: var(--green);
+    margin-bottom: 0.5rem;
+}
+.report-page .page-sub {
+    color: #777;
+    margin-bottom: 2rem;
+}
+.trail-selector {
+    background: var(--cream);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid rgba(0,0,0,0.06);
+}
+.trail-selector h2 {
+    font-size: 1.1rem;
+    color: var(--green);
+    margin-bottom: 1rem;
+}
+.trail-search-wrap {
+    position: relative;
+}
+.trail-search-wrap input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 1rem;
+    outline: none;
+    box-sizing: border-box;
+}
+.trail-search-wrap input:focus {
+    border-color: var(--green-light);
+}
+.trail-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 100;
+    max-height: 250px;
+    overflow-y: auto;
+    display: none;
+}
+.trail-suggestions .suggestion {
+    padding: 10px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    font-family: 'Nunito', sans-serif;
+}
+.trail-suggestions .suggestion:hover {
+    background: var(--sand);
+}
+.trail-suggestions .suggestion .sug-name {
+    font-weight: 700;
+    color: var(--green);
+}
+.trail-suggestions .suggestion .sug-ctx {
+    font-size: 0.8rem;
+    color: #888;
+}
+.selected-trail {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: white;
+    border: 2px solid var(--green-light);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-top: 10px;
+}
+.selected-trail .st-name {
+    font-weight: 700;
+    color: var(--green);
+    flex: 1;
+}
+.selected-trail .st-change {
+    color: var(--brown);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: underline;
+}
+#reportMiniMap {
+    height: 200px;
+    border-radius: 10px;
+    margin-top: 10px;
+}
+.report-form {
+    display: none;
+}
+.report-form.active {
+    display: block;
+}
+.form-section {
+    background: var(--cream);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid rgba(0,0,0,0.06);
+}
+.form-section h2 {
+    font-size: 1.1rem;
+    color: var(--green);
+    margin-bottom: 1rem;
+}
+.form-group {
+    margin-bottom: 1.2rem;
+}
+.form-group label {
+    display: block;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #555;
+    margin-bottom: 6px;
+}
+.form-group select,
+.form-group textarea,
+.form-group input[type="date"],
+.form-group input[type="text"] {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    outline: none;
+    box-sizing: border-box;
+    background: white;
+}
+.form-group select:focus,
+.form-group textarea:focus,
+.form-group input:focus {
+    border-color: var(--green-light);
+}
+.form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+.chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 2px solid #ddd;
+    background: white;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: #555;
+}
+.chip.selected {
+    border-color: var(--green);
+    background: var(--green);
+    color: white;
+}
+.chip:hover:not(.selected) {
+    border-color: var(--green-light);
+}
+.btn-submit {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: var(--green);
+    color: white;
+    font-family: 'Nunito', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.btn-submit:hover {
+    background: var(--green-light);
+}
+.btn-submit:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+.report-success {
+    text-align: center;
+    padding: 3rem 1rem;
+    display: none;
+}
+.report-success h2 {
+    color: var(--green);
+}

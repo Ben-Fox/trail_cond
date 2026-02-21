@@ -210,6 +210,10 @@ def index():
 def explore():
     return render_template('explore.html')
 
+@app.route('/report')
+def report():
+    return render_template('report.html')
+
 @app.route('/trail/<osm_type>/<int:osm_id>')
 def trail_detail(osm_type, osm_id):
     if osm_type not in ('way', 'relation'):
@@ -755,8 +759,11 @@ def get_reports(facility_id):
 def add_report(facility_id):
     data = request.json
     db = get_db()
-    db.execute('INSERT INTO reports (facility_id, trail_condition, trail_surface, road_access, general_notes, date_visited) VALUES (?,?,?,?,?,?)',
-               (facility_id, data.get('trail_condition'), data.get('trail_surface'), data.get('road_access'), data.get('general_notes'), data.get('date_visited')))
+    db.execute('''INSERT INTO reports (facility_id, trail_name, trail_condition, trail_surface, weather, road_access, parking, issues, general_notes, date_visited) 
+                  VALUES (?,?,?,?,?,?,?,?,?,?)''',
+               (facility_id, data.get('trail_name'), data.get('trail_condition'), data.get('trail_surface'),
+                data.get('weather'), data.get('road_access'), data.get('parking'), data.get('issues'),
+                data.get('general_notes'), data.get('date_visited')))
     db.commit()
     return jsonify({'ok': True})
 

@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+{% block title %}Submit a Trail Report — Trail Condish{% endblock %}
+{% block content %}
+<div class="report-page">
+    <h1>Submit a Trail Report</h1>
+    <p class="page-sub">Help fellow hikers know what to expect. Your report is anonymous.</p>
+    
+    <!-- Step 1: Select Trail -->
+    <div class="trail-selector" id="trailSelector">
+        <h2>1. Which trail?</h2>
+        <div class="trail-search-wrap">
+            <input type="text" id="trailSearchInput" placeholder="Search by trail name or location..." autocomplete="off">
+            <div class="trail-suggestions" id="trailSuggestions"></div>
+        </div>
+        <div id="selectedTrailInfo" style="display:none;">
+            <div class="selected-trail">
+                <span class="st-name" id="stName"></span>
+                <span class="st-change" id="stChange">Change</span>
+            </div>
+            <div id="reportMiniMap"></div>
+        </div>
+    </div>
+    
+    <!-- Step 2: Report Form (shown after trail selected) -->
+    <div class="report-form" id="reportForm">
+        <div class="form-section">
+            <h2>2. Trail Conditions</h2>
+            
+            <div class="form-group">
+                <label>Date Visited</label>
+                <input type="date" id="dateVisited">
+            </div>
+            
+            <div class="form-group">
+                <label>Overall Condition</label>
+                <div class="chip-group" data-field="trail_condition">
+                    <span class="chip" data-value="excellent">Excellent</span>
+                    <span class="chip" data-value="good">Good</span>
+                    <span class="chip" data-value="fair">Fair</span>
+                    <span class="chip" data-value="poor">Poor</span>
+                    <span class="chip" data-value="closed">Closed / Impassable</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Trail Surface</label>
+                <div class="chip-group" data-field="trail_surface">
+                    <span class="chip" data-value="dry">Dry</span>
+                    <span class="chip" data-value="wet">Wet</span>
+                    <span class="chip" data-value="muddy">Muddy</span>
+                    <span class="chip" data-value="snowy">Snowy</span>
+                    <span class="chip" data-value="icy">Icy</span>
+                    <span class="chip" data-value="rocky">Rocky</span>
+                    <span class="chip" data-value="overgrown">Overgrown</span>
+                    <span class="chip" data-value="flooded">Flooded</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Weather at Time of Hike</label>
+                <div class="chip-group" data-field="weather">
+                    <span class="chip" data-value="sunny">Sunny</span>
+                    <span class="chip" data-value="partly_cloudy">Partly Cloudy</span>
+                    <span class="chip" data-value="overcast">Overcast</span>
+                    <span class="chip" data-value="raining">Raining</span>
+                    <span class="chip" data-value="snowing">Snowing</span>
+                    <span class="chip" data-value="windy">Windy</span>
+                    <span class="chip" data-value="foggy">Foggy</span>
+                    <span class="chip" data-value="hot">Hot</span>
+                    <span class="chip" data-value="cold">Cold</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <h2>3. Road Access & Parking</h2>
+            
+            <div class="form-group">
+                <label>Road Access</label>
+                <div class="chip-group" data-field="road_access">
+                    <span class="chip" data-value="paved">Paved Road</span>
+                    <span class="chip" data-value="gravel">Gravel / Dirt Road</span>
+                    <span class="chip" data-value="4wd">4WD / High Clearance</span>
+                    <span class="chip" data-value="closed">Road Closed</span>
+                    <span class="chip" data-value="limited">Limited Access</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Parking</label>
+                <div class="chip-group" data-field="parking">
+                    <span class="chip" data-value="plenty">Plenty Available</span>
+                    <span class="chip" data-value="some">Some Available</span>
+                    <span class="chip" data-value="full">Full / Overflow</span>
+                    <span class="chip" data-value="none">No Parking</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <h2>4. Trail Issues</h2>
+            <p style="font-size:0.85rem; color:#888; margin-bottom:1rem;">Select any issues you encountered (multiple OK)</p>
+            
+            <div class="form-group">
+                <div class="chip-group multi" data-field="issues">
+                    <span class="chip" data-value="downed_trees">Downed Trees</span>
+                    <span class="chip" data-value="erosion">Erosion</span>
+                    <span class="chip" data-value="washout">Washout</span>
+                    <span class="chip" data-value="rockslide">Rockslide</span>
+                    <span class="chip" data-value="missing_signs">Missing Signs / Markers</span>
+                    <span class="chip" data-value="trash">Trash / Litter</span>
+                    <span class="chip" data-value="dog_waste">Dog Waste</span>
+                    <span class="chip" data-value="vandalism">Vandalism</span>
+                    <span class="chip" data-value="wildlife">Wildlife Concern</span>
+                    <span class="chip" data-value="bugs">Bugs / Mosquitoes</span>
+                    <span class="chip" data-value="poison_plants">Poison Ivy / Oak</span>
+                    <span class="chip" data-value="crowded">Overcrowded</span>
+                    <span class="chip" data-value="no_issues">No Issues</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <h2>5. Additional Notes</h2>
+            <div class="form-group">
+                <label>Anything else hikers should know?</label>
+                <textarea id="generalNotes" placeholder="Snow above 10,000ft, bridge out at mile 3, wildflowers blooming, etc."></textarea>
+            </div>
+        </div>
+        
+        <button class="btn-submit" id="submitReport">Submit Report</button>
+    </div>
+    
+    <!-- Success message -->
+    <div class="report-success" id="reportSuccess">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <h2>Report Submitted!</h2>
+        <p>Thanks for helping the community. Your report will show up on the trail page.</p>
+        <br>
+        <a href="/explore" class="btn btn-primary">Find More Trails</a>
+        <br><br>
+        <a href="#" id="submitAnother" style="color:var(--green); font-weight:600;">Submit Another Report</a>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let selectedTrail = null;
+let miniMap = null;
+let debounceTimer = null;
+
+// Trail search with autocomplete
+const searchInput = document.getElementById('trailSearchInput');
+const suggestionsDiv = document.getElementById('trailSuggestions');
+
+searchInput.addEventListener('input', function() {
+    clearTimeout(debounceTimer);
+    const q = this.value.trim();
+    if (q.length < 2) { suggestionsDiv.style.display = 'none'; return; }
+    
+    debounceTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(`/api/autocomplete?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            if (!data.length) { suggestionsDiv.style.display = 'none'; return; }
+            
+            suggestionsDiv.innerHTML = data.map(item => `
+                <div class="suggestion" data-type="${item.type}" data-osm-type="${item.osm_type || ''}" data-osm-id="${item.osm_id || ''}" data-name="${item.name}" data-lat="${item.lat || ''}" data-lon="${item.lon || ''}">
+                    <div class="sug-name">${item.type === 'trail' ? '🥾 ' : '📍 '}${item.name}</div>
+                    <div class="sug-ctx">${item.context || ''}</div>
+                </div>
+            `).join('');
+            suggestionsDiv.style.display = 'block';
+            
+            // Click handlers
+            suggestionsDiv.querySelectorAll('.suggestion').forEach(el => {
+                el.addEventListener('click', async function() {
+                    const osmType = this.dataset.osmType;
+                    const osmId = this.dataset.osmId;
+                    const name = this.dataset.name;
+                    const type = this.dataset.type;
+                    
+                    if (type === 'trail' && osmType && osmId) {
+                        // Direct trail selection
+                        selectTrail({osm_type: osmType, osm_id: osmId, name: name});
+                    } else if (this.dataset.lat && this.dataset.lon) {
+                        // Area — search for trails nearby and show them
+                        suggestionsDiv.style.display = 'none';
+                        searchInput.value = name;
+                        searchInput.disabled = true;
+                        searchInput.placeholder = 'Searching trails...';
+                        try {
+                            const sres = await fetch(`/api/search?q=${encodeURIComponent(name)}`);
+                            const trails = await sres.json();
+                            if (trails.length) {
+                                suggestionsDiv.innerHTML = trails.slice(0, 15).map(t => `
+                                    <div class="suggestion" data-type="trail" data-osm-type="${t.osm_type}" data-osm-id="${t.osm_id}" data-name="${t.name}">
+                                        <div class="sug-name">🥾 ${t.name}</div>
+                                        <div class="sug-ctx">${t.surface || ''} ${t.difficulty || ''}</div>
+                                    </div>
+                                `).join('');
+                                suggestionsDiv.style.display = 'block';
+                                suggestionsDiv.querySelectorAll('.suggestion').forEach(el2 => {
+                                    el2.addEventListener('click', function() {
+                                        selectTrail({osm_type: this.dataset.osmType, osm_id: this.dataset.osmId, name: this.dataset.name});
+                                    });
+                                });
+                            } else {
+                                suggestionsDiv.innerHTML = '<div class="suggestion"><div class="sug-name">No trails found in this area</div></div>';
+                                suggestionsDiv.style.display = 'block';
+                            }
+                        } catch(e) {}
+                        searchInput.disabled = false;
+                        searchInput.placeholder = 'Search by trail name or location...';
+                    }
+                });
+            });
+        } catch(e) {}
+    }, 200);
+});
+
+// Hide suggestions on click outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.trail-search-wrap')) suggestionsDiv.style.display = 'none';
+});
+
+async function selectTrail(trail) {
+    selectedTrail = trail;
+    suggestionsDiv.style.display = 'none';
+    searchInput.style.display = 'none';
+    document.getElementById('selectedTrailInfo').style.display = 'block';
+    document.getElementById('stName').textContent = trail.name;
+    
+    // Show form
+    document.getElementById('reportForm').classList.add('active');
+    
+    // Set default date to today
+    document.getElementById('dateVisited').value = new Date().toISOString().split('T')[0];
+    
+    // Load trail details for map
+    try {
+        const res = await fetch(`/api/trail/${trail.osm_type}/${trail.osm_id}`);
+        const data = await res.json();
+        if (data.lat && data.lon) {
+            selectedTrail.lat = data.lat;
+            selectedTrail.lon = data.lon;
+            selectedTrail.geometry = data.geometry;
+            
+            if (!miniMap) {
+                miniMap = L.map('reportMiniMap').setView([data.lat, data.lon], 13);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; OSM &copy; CARTO', subdomains: 'abcd', maxZoom: 20
+                }).addTo(miniMap);
+            } else {
+                miniMap.setView([data.lat, data.lon], 13);
+                miniMap.eachLayer(l => { if (l instanceof L.Polyline || l instanceof L.Marker) miniMap.removeLayer(l); });
+            }
+            
+            if (data.geometry && data.geometry.length > 1) {
+                const latlngs = data.geometry.map(p => [p.lat, p.lon]);
+                const polyline = L.polyline(latlngs, {color: '#c44536', weight: 4}).addTo(miniMap);
+                miniMap.fitBounds(polyline.getBounds(), {padding: [20, 20]});
+            } else {
+                L.marker([data.lat, data.lon]).addTo(miniMap);
+            }
+            
+            setTimeout(() => miniMap.invalidateSize(), 100);
+        }
+    } catch(e) {}
+}
+
+// Change trail
+document.getElementById('stChange').addEventListener('click', function() {
+    selectedTrail = null;
+    searchInput.style.display = 'block';
+    searchInput.value = '';
+    document.getElementById('selectedTrailInfo').style.display = 'none';
+    document.getElementById('reportForm').classList.remove('active');
+});
+
+// Chip selection
+document.querySelectorAll('.chip-group').forEach(group => {
+    const multi = group.classList.contains('multi');
+    group.querySelectorAll('.chip').forEach(chip => {
+        chip.addEventListener('click', function() {
+            if (multi) {
+                // Multi-select: "no_issues" deselects all others
+                if (this.dataset.value === 'no_issues') {
+                    group.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+                    this.classList.add('selected');
+                } else {
+                    group.querySelector('.chip[data-value="no_issues"]')?.classList.remove('selected');
+                    this.classList.toggle('selected');
+                }
+            } else {
+                group.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+                this.classList.add('selected');
+            }
+        });
+    });
+});
+
+function getChipValue(field) {
+    const group = document.querySelector(`.chip-group[data-field="${field}"]`);
+    if (!group) return '';
+    if (group.classList.contains('multi')) {
+        return Array.from(group.querySelectorAll('.chip.selected')).map(c => c.dataset.value).join(',');
+    }
+    const sel = group.querySelector('.chip.selected');
+    return sel ? sel.dataset.value : '';
+}
+
+// Submit
+document.getElementById('submitReport').addEventListener('click', async function() {
+    if (!selectedTrail) return alert('Please select a trail first');
+    
+    const condition = getChipValue('trail_condition');
+    if (!condition) return alert('Please select an overall condition');
+    
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+    
+    const facilityId = `${selectedTrail.osm_type}:${selectedTrail.osm_id}`;
+    const report = {
+        trail_condition: condition,
+        trail_surface: getChipValue('trail_surface'),
+        road_access: getChipValue('road_access'),
+        parking: getChipValue('parking'),
+        weather: getChipValue('weather'),
+        issues: getChipValue('issues'),
+        general_notes: document.getElementById('generalNotes').value.trim(),
+        date_visited: document.getElementById('dateVisited').value,
+        trail_name: selectedTrail.name,
+    };
+    
+    try {
+        const res = await fetch(`/api/trail/${facilityId}/reports`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(report),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('reportForm').classList.remove('active');
+            document.getElementById('trailSelector').style.display = 'none';
+            document.getElementById('reportSuccess').style.display = 'block';
+        } else {
+            alert('Error submitting report. Please try again.');
+        }
+    } catch(e) {
+        alert('Error submitting report. Please try again.');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = 'Submit Report';
+});
+
+// Submit another
+document.getElementById('submitAnother').addEventListener('click', function(e) {
+    e.preventDefault();
+    selectedTrail = null;
+    searchInput.style.display = 'block';
+    searchInput.value = '';
+    document.getElementById('selectedTrailInfo').style.display = 'none';
+    document.getElementById('trailSelector').style.display = 'block';
+    document.getElementById('reportForm').classList.remove('active');
+    document.getElementById('reportSuccess').style.display = 'none';
+    // Clear all chips
+    document.querySelectorAll('.chip.selected').forEach(c => c.classList.remove('selected'));
+    document.getElementById('generalNotes').value = '';
+});
+</script>
+{% endblock %}

@@ -31,9 +31,13 @@ def init_db():
         CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             facility_id TEXT NOT NULL,
+            trail_name TEXT,
             trail_condition TEXT,
             trail_surface TEXT,
+            weather TEXT,
             road_access TEXT,
+            parking TEXT,
+            issues TEXT,
             general_notes TEXT,
             date_visited TEXT,
             upvotes INTEGER DEFAULT 0,
@@ -51,3 +55,20 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_reports_facility ON reports(facility_id);
         CREATE INDEX IF NOT EXISTS idx_votes_report ON votes(report_id);
     ''')
+    # Add new columns if they don't exist (migration)
+    try:
+        conn.execute('ALTER TABLE reports ADD COLUMN trail_name TEXT')
+    except Exception:
+        pass
+    try:
+        conn.execute('ALTER TABLE reports ADD COLUMN weather TEXT')
+    except Exception:
+        pass
+    try:
+        conn.execute('ALTER TABLE reports ADD COLUMN parking TEXT')
+    except Exception:
+        pass
+    try:
+        conn.execute('ALTER TABLE reports ADD COLUMN issues TEXT')
+    except Exception:
+        pass
