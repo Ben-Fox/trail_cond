@@ -1093,6 +1093,15 @@ body {
     line-height: 1.3;
 }
 
+.hero-disclaimer {
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.55);
+    max-width: 540px;
+    margin: 28px auto 0;
+    line-height: 1.5;
+    font-style: italic;
+}
+
 /* Activity icons */
 .activity-icon {
     width: 18px;
