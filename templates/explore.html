@@ -18,6 +18,14 @@
             </button>
             <button id="searchBtn" class="btn btn-primary">Search</button>
         </div>
+        <div class="trail-filters">
+            <span class="filter-label">Trail Type:</span>
+            <button class="filter-chip active" data-filter="all">All</button>
+            <button class="filter-chip" data-filter="hiking">Hiking</button>
+            <button class="filter-chip" data-filter="biking">Biking</button>
+            <button class="filter-chip" data-filter="paved">Paved / Path</button>
+            <button class="filter-chip" data-filter="horse">Horseback</button>
+        </div>
     </div>
 </section>
 <section class="explore-body">
@@ -74,6 +82,20 @@ Object.keys(US_STATES).sort().forEach(s => { const o = document.createElement('o
 let map, markerCluster, routeLayers = [];
 let currentView = 'map'; // default to map
 let currentTrails = [];
+let activeTrailType = 'all';
+
+// Trail type filter chips
+document.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', function() {
+        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+        activeTrailType = this.dataset.filter;
+        // Re-search if we have results
+        if (currentTrails.length > 0 || document.getElementById('searchInput').value.trim()) {
+            doSearch();
+        }
+    });
+});
 
 const BASEMAPS = {
     carto: {url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attr: '&copy; OSM &copy; CARTO', subdomains: 'abcd', maxZoom: 20},
@@ -415,6 +437,7 @@ async function doSearch() {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (state) params.set('state', state);
+    if (activeTrailType !== 'all') params.set('type', activeTrailType);
     
     document.getElementById('resultsList').innerHTML = '';
     showView('map');
@@ -624,7 +647,8 @@ searchMapBtn.addEventListener('click', async () => {
     document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching this area...</p></div>';
     
     try {
-        const res = await fetch(`/api/search?bbox=${encodeURIComponent(bbox)}`);
+        const typeParam = activeTrailType !== 'all' ? `&type=${activeTrailType}` : '';
+        const res = await fetch(`/api/search?bbox=${encodeURIComponent(bbox)}${typeParam}`);
         const trails = await res.json();
         if (!trails.length) {
             document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found in this area. Try zooming out.</p>';

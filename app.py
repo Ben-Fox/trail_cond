@@ -356,33 +356,59 @@ def api_autocomplete():
     _autocomplete_cache[ac_key] = (now, results)
     return jsonify(results)
 
+TRAIL_TYPE_QUERIES = {
+    'all': {
+        'ways': '["highway"~"path|footway|cycleway|bridleway"]',
+        'rels': '["route"~"hiking|bicycle|horse"]',
+    },
+    'hiking': {
+        'ways': '["highway"~"path|footway"]',
+        'rels': '["route"="hiking"]',
+    },
+    'biking': {
+        'ways': '["highway"~"cycleway|path"]["bicycle"!="no"]',
+        'rels': '["route"="bicycle"]',
+    },
+    'paved': {
+        'ways': '["highway"~"path|footway|cycleway"]["surface"~"paved|asphalt|concrete|compacted"]',
+        'rels': '["route"~"hiking|bicycle"]["surface"~"paved|asphalt|concrete|compacted"]',
+    },
+    'horse': {
+        'ways': '["highway"~"bridleway|path"]["horse"!="no"]',
+        'rels': '["route"="horse"]',
+    },
+}
+
+def get_trail_query_parts(trail_type):
+    return TRAIL_TYPE_QUERIES.get(trail_type, TRAIL_TYPE_QUERIES['all'])
+
 @app.route('/api/search')
 def api_search():
     q = request.args.get('q', '').strip()
     state = request.args.get('state', '').strip()
     lat = request.args.get('lat', '').strip()
     lon = request.args.get('lon', '').strip()
-    bbox = request.args.get('bbox', '').strip()  # south,west,north,east
+    bbox = request.args.get('bbox', '').strip()
+    trail_type = request.args.get('type', 'all').strip()
+    tp = get_trail_query_parts(trail_type)
     
     try:
         if bbox:
-            # Search by map bounding box
             parts = bbox.split(',')
             if len(parts) == 4:
                 s, w, n, e = parts
                 query = f'''[out:json][timeout:25];
 (
-  way["highway"~"path|footway"]["name"]({s},{w},{n},{e});
-  relation["route"="hiking"]["name"]({s},{w},{n},{e});
+  way{tp['ways']}["name"]({s},{w},{n},{e});
+  relation{tp['rels']}["name"]({s},{w},{n},{e});
 );
 out center tags 100;'''
                 return jsonify(parse_osm_trails(overpass_query(query)))
         elif lat and lon:
-            # Near me search
             query = f'''[out:json][timeout:25];
 (
-  way["highway"~"path|footway"]["name"](around:8000,{lat},{lon});
-  relation["route"="hiking"]["name"](around:8000,{lat},{lon});
+  way{tp['ways']}["name"](around:8000,{lat},{lon});
+  relation{tp['rels']}["name"](around:8000,{lat},{lon});
 );
 out center tags;'''
         elif state and state in STATE_NAMES:
@@ -390,17 +416,15 @@ out center tags;'''
             query = f'''[out:json][timeout:25];
 area["name"="{state_name}"]["admin_level"="4"]->.searchArea;
 (
-  relation["route"="hiking"]["name"](area.searchArea);
+  relation{tp['rels']}["name"](area.searchArea);
 );
 out center tags 50;'''
         elif q:
-            # Geocode the query to get a bounding box, then search trails in that area
             geo = geocode(q)
             results = []
             
             if geo and geo['bbox']:
                 south, north, west, east = geo['bbox']
-                # Ensure minimum bbox size (~20km)
                 lat_span = north - south
                 lon_span = east - west
                 if lat_span < 0.2:
@@ -414,8 +438,8 @@ out center tags 50;'''
                 bbox_str = f"{south},{west},{north},{east}"
                 bbox_query = f'''[out:json][timeout:25];
 (
-  way["highway"~"path|footway"]["name"]({bbox_str});
-  relation["route"="hiking"]["name"]({bbox_str});
+  way{tp['ways']}["name"]({bbox_str});
+  relation{tp['rels']}["name"]({bbox_str});
 );
 out center tags 100;'''
                 try:
@@ -423,11 +447,10 @@ out center tags 100;'''
                 except Exception:
                     pass
             elif geo:
-                # No bbox, use around search
                 around_query = f'''[out:json][timeout:25];
 (
-  way["highway"~"path|footway"]["name"](around:15000,{geo['lat']},{geo['lon']});
-  relation["route"="hiking"]["name"](around:15000,{geo['lat']},{geo['lon']});
+  way{tp['ways']}["name"](around:15000,{geo['lat']},{geo['lon']});
+  relation{tp['rels']}["name"](around:15000,{geo['lat']},{geo['lon']});
 );
 out center tags 100;'''
                 try:
@@ -438,7 +461,7 @@ out center tags 100;'''
             # Also search hiking relations by name globally (fast)
             try:
                 name_query = f'''[out:json][timeout:10];
-relation["route"="hiking"]["name"~"{q}",i];
+relation{tp['rels']}["name"~"{q}",i];
 out center tags 20;'''
                 name_results = parse_osm_trails(overpass_query(name_query))
                 seen_ids = {r['id'] for r in results}

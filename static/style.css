@@ -841,3 +841,38 @@ body {
 .report-success h2 {
     color: var(--green);
 }
+
+/* Trail type filters */
+.trail-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+.filter-label {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #777;
+}
+.filter-chip {
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 2px solid #ddd;
+    background: white;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: #555;
+}
+.filter-chip.active {
+    border-color: var(--green);
+    background: var(--green);
+    color: white;
+}
+.filter-chip:hover:not(.active) {
+    border-color: var(--green-light);
+}
