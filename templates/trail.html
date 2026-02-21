@@ -33,6 +33,7 @@ function difficultyLabel(sac) {
 }
 
 async function loadTrail() {
+    let trailConditionPin = null;
     // Pass way_ids from URL params if present (merged trail segments)
     const urlParams = new URLSearchParams(window.location.search);
     const wayIds = urlParams.get('way_ids') || '';
@@ -371,7 +372,6 @@ async function loadTrail() {
     }
     
     // Load weather conditions
-    let trailConditionPin = null; // reference to update pin icon
     if (trail.lat && trail.lon) {
         const wr = await fetch(`/api/weather/history?lat=${trail.lat}&lon=${trail.lon}`);
         const w = await wr.json();

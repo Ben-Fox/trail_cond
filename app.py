@@ -779,6 +779,11 @@ def api_trail(osm_type, osm_id):
             id_union = ''.join(f'way({wid});' for wid in all_ids)
             query = f'''[out:json][timeout:25];
 ({id_union});\nout geom tags;'''
+        elif osm_type == 'relation':
+            # Relations need special handling: get tags first, then expand members with geometry
+            query = f'''[out:json][timeout:25];
+relation({osm_id});out tags;
+relation({osm_id});>;out geom;'''
         else:
             query = f'''[out:json][timeout:25];
 {osm_type}({osm_id});
@@ -787,11 +792,18 @@ out geom tags;'''
         data = overpass_query(query)
         elements = data.get('elements', [])
         if not elements:
-            # For single-way fallback, also try finding same-name siblings
             return jsonify({'error': 'Trail not found'}), 404
         
-        el = elements[0]
-        tags = el.get('tags', {})
+        # For relations, find the relation element for tags and ways for geometry
+        if osm_type == 'relation':
+            rel_els = [e for e in elements if e.get('type') == 'relation']
+            way_els = [e for e in elements if e.get('type') == 'way' and 'geometry' in e]
+            el = rel_els[0] if rel_els else elements[0]
+            tags = el.get('tags', {})
+        else:
+            el = elements[0]
+            tags = el.get('tags', {})
+            way_els = []
         
         # Extract geometry (combine all elements for multi-way)
         geometry = []
@@ -800,10 +812,11 @@ out geom tags;'''
                 if 'geometry' in seg:
                     seg_pts = [{'lat': p['lat'], 'lon': p['lon']} for p in seg['geometry']]
                     geometry.extend(seg_pts)
-        elif osm_type == 'relation' and 'members' in el:
-            for member in el.get('members', []):
-                if member.get('type') == 'way' and 'geometry' in member:
-                    geometry.extend([{'lat': p['lat'], 'lon': p['lon']} for p in member['geometry']])
+        elif osm_type == 'relation':
+            # Collect geometry from expanded member ways
+            for way in way_els:
+                if 'geometry' in way:
+                    geometry.extend([{'lat': p['lat'], 'lon': p['lon']} for p in way['geometry']])
         
         # Use first point of geometry as trailhead/start position
         lat = lon = None
@@ -814,7 +827,16 @@ out geom tags;'''
             lat = el['center']['lat']
             lon = el['center']['lon']
         
+        # Deduplicate consecutive geometry points
+        if len(geometry) > 1:
+            deduped = [geometry[0]]
+            for pt in geometry[1:]:
+                if pt['lat'] != deduped[-1]['lat'] or pt['lon'] != deduped[-1]['lon']:
+                    deduped.append(pt)
+            geometry = deduped
+        
         # Calculate approximate distance in km from geometry
+        # Skip jumps > 500m between consecutive points (disconnected way segments)
         distance_km = None
         if len(geometry) > 1:
             total = 0
@@ -824,7 +846,9 @@ out geom tags;'''
                 dlat = lat2 - lat1
                 dlon = lon2 - lon1
                 a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
-                total += 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
+                seg = 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
+                if seg < 0.5:  # Skip jumps > 500m (disconnected segments)
+                    total += seg
             distance_km = round(total, 1)
         
         result = {
