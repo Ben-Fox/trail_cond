@@ -193,44 +193,77 @@ def parse_osm_trails(data):
                 })
         elif osm_type == 'way':
             norm = name.strip().lower()
-            if norm not in way_groups:
-                way_groups[norm] = {'name': name, 'ways': [], 'tags': tags}
-            way_el = {'id': osm_id}
+            way_el = {'id': osm_id, 'lat': None, 'lon': None, 'tags': tags, 'name': name}
             if 'center' in el:
                 way_el['lat'] = el['center'].get('lat')
                 way_el['lon'] = el['center'].get('lon')
-            way_groups[norm]['ways'].append(way_el)
+            if norm not in way_groups:
+                way_groups[norm] = []
+            way_groups[norm].append(way_el)
     
     # Names already covered by relations — skip those way groups
     rel_names = {r['name'].strip().lower() for r in relations}
     
+    # Proximity-cluster same-name ways (only merge if within ~5km of each other)
+    MAX_MERGE_KM = 5.0
+    
+    def _haversine_km(lat1, lon1, lat2, lon2):
+        """Quick haversine distance in km."""
+        from math import radians as rad, sin, cos, sqrt, atan2
+        rlat1, rlon1, rlat2, rlon2 = rad(lat1), rad(lon1), rad(lat2), rad(lon2)
+        dlat, dlon = rlat2 - rlat1, rlon2 - rlon1
+        a = sin(dlat/2)**2 + cos(rlat1)*cos(rlat2)*sin(dlon/2)**2
+        return 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
+    
+    def _cluster_ways(ways):
+        """Group ways into proximity clusters. Each cluster becomes one result."""
+        clusters = []
+        for w in ways:
+            if w['lat'] is None or w['lon'] is None:
+                # No coords — put in own cluster
+                clusters.append([w])
+                continue
+            merged = False
+            for cluster in clusters:
+                # Check if this way is near any way in the cluster
+                for cw in cluster:
+                    if cw['lat'] is not None and cw['lon'] is not None:
+                        if _haversine_km(w['lat'], w['lon'], cw['lat'], cw['lon']) <= MAX_MERGE_KM:
+                            cluster.append(w)
+                            merged = True
+                            break
+                if merged:
+                    break
+            if not merged:
+                clusters.append([w])
+        return clusters
+    
     results = list(relations)
-    for norm, grp in way_groups.items():
+    for norm, ways in way_groups.items():
         if norm in rel_names:
             continue
-        ways = grp['ways']
-        tags = grp['tags']
-        # Use first way as representative; store all way IDs for detail page
-        rep = ways[0]
-        way_ids = [w['id'] for w in ways]
-        # Average center across all segments
-        lats = [w['lat'] for w in ways if w.get('lat')]
-        lons = [w['lon'] for w in ways if w.get('lon')]
-        lat = sum(lats) / len(lats) if lats else None
-        lon = sum(lons) / len(lons) if lons else None
-        
-        entry = {
-            'id': f"way:{rep['id']}",
-            'osm_type': 'way', 'osm_id': rep['id'],
-            'name': grp['name'], 'lat': lat, 'lon': lon,
-            'difficulty': tags.get('sac_scale', ''),
-            'surface': tags.get('surface', ''),
-            'distance': tags.get('distance', ''),
-            'desc': (tags.get('description') or tags.get('note', ''))[:200],
-        }
-        if len(way_ids) > 1:
-            entry['way_ids'] = way_ids  # all segment IDs for full geometry fetch
-        results.append(entry)
+        clusters = _cluster_ways(ways)
+        for cluster in clusters:
+            rep = cluster[0]
+            tags = rep['tags']
+            way_ids = [w['id'] for w in cluster]
+            lats = [w['lat'] for w in cluster if w.get('lat')]
+            lons = [w['lon'] for w in cluster if w.get('lon')]
+            lat = sum(lats) / len(lats) if lats else None
+            lon = sum(lons) / len(lons) if lons else None
+            
+            entry = {
+                'id': f"way:{rep['id']}",
+                'osm_type': 'way', 'osm_id': rep['id'],
+                'name': rep['name'], 'lat': lat, 'lon': lon,
+                'difficulty': tags.get('sac_scale', ''),
+                'surface': tags.get('surface', ''),
+                'distance': tags.get('distance', ''),
+                'desc': (tags.get('description') or tags.get('note', ''))[:200],
+            }
+            if len(way_ids) > 1:
+                entry['way_ids'] = way_ids
+            results.append(entry)
     
     return results
 
