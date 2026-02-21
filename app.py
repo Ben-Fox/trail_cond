@@ -942,6 +942,7 @@ def api_weather_grid():
                 'latitude': batch_lats,
                 'longitude': batch_lons,
                 'daily': 'temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,rain_sum',
+                'current': 'snow_depth,temperature_2m',
                 'past_days': 7,
                 'forecast_days': 1,
                 'timezone': 'auto'
@@ -955,17 +956,38 @@ def api_weather_grid():
             for j, d in enumerate(data):
                 idx = uncached_indices[j]
                 daily = d.get('daily', {})
+                current = d.get('current', {})
+                elevation = d.get('elevation', 0)
+                snow_depth_m = current.get('snow_depth', 0) or 0
+                snow_depth_in = snow_depth_m * 39.37
+                current_temp = current.get('temperature_2m', 10) or 10
                 total_snow = sum(v for v in (daily.get('snowfall_sum') or []) if v)
                 total_rain = sum(v for v in (daily.get('rain_sum') or []) if v)
                 total_precip = sum(v for v in (daily.get('precipitation_sum') or []) if v)
                 min_temps = [v for v in (daily.get('temperature_2m_min') or []) if v is not None]
                 avg_min = sum(min_temps) / len(min_temps) if min_temps else 0
+                elev_ft = elevation * 3.281 if elevation else 0
                 
                 reasons = []
                 condition = 'clear'
-                if total_snow > 5:
+                
+                # Snow depth on ground is the strongest signal
+                if snow_depth_in > 12:
                     condition = 'snowy'
-                    reasons.append(f'{total_snow:.1f}cm snow in 7 days')
+                    reasons.append(f'{snow_depth_in:.0f}" snow depth on ground')
+                    if current_temp < -2:
+                        reasons.append(f'Currently {current_temp:.0f}°C — packed/icy snow likely')
+                elif snow_depth_in > 3:
+                    if current_temp < 0:
+                        condition = 'icy'
+                        reasons.append(f'{snow_depth_in:.0f}" snow + freezing ({current_temp:.0f}°C)')
+                    else:
+                        condition = 'snowy'
+                        reasons.append(f'{snow_depth_in:.0f}" snow on ground')
+                # Recent snowfall
+                elif total_snow > 5:
+                    condition = 'snowy'
+                    reasons.append(f'{total_snow:.1f}cm snowfall in 7 days')
                 elif total_snow > 0.5:
                     if avg_min < 0:
                         condition = 'icy'
@@ -973,6 +995,14 @@ def api_weather_grid():
                     else:
                         condition = 'snowy'
                         reasons.append(f'{total_snow:.1f}cm snow in 7 days')
+                # Elevation-aware: high alpine with freezing temps likely has lingering snow/ice
+                if condition == 'clear' and elev_ft > 8000 and avg_min < -3:
+                    condition = 'icy'
+                    reasons.append(f'High elevation ({elev_ft:.0f}ft) + freezing temps')
+                elif condition == 'clear' and elev_ft > 6500 and avg_min < -5 and total_precip > 2:
+                    condition = 'snowy'
+                    reasons.append(f'Elevation {elev_ft:.0f}ft with sub-freezing temps + recent precip')
+                # Rain/mud
                 if total_rain > 20:
                     if condition == 'clear':
                         condition = 'muddy'
@@ -984,6 +1014,9 @@ def api_weather_grid():
                 if condition == 'clear' and total_precip < 2:
                     condition = 'dry'
                     reasons.append('Minimal precipitation — trails likely dry')
+                # Add elevation context
+                if elev_ft > 5000:
+                    reasons.append(f'Elevation: {elev_ft:.0f}ft')
                 if not reasons:
                     reasons.append('Conditions look good')
                 

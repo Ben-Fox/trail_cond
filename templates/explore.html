@@ -252,11 +252,11 @@ function initMap() {
         const w = bounds.getWest(), e = bounds.getEast();
         
         // Fixed global grid spacing based on zoom level (deterministic)
-        const gridSpacing = zoom >= 11 ? 0.05
-                          : zoom >= 9  ? 0.1
-                          : zoom >= 7  ? 0.25
-                          : zoom >= 5  ? 0.5
-                          :              1.0;
+        const gridSpacing = zoom >= 12 ? 0.03
+                          : zoom >= 10 ? 0.06
+                          : zoom >= 8  ? 0.15
+                          : zoom >= 6  ? 0.4
+                          :              0.8;
         
         // Snap bounds to world-fixed grid lines (+ 1 cell padding for smooth edges)
         const ps = Math.floor(s / gridSpacing) * gridSpacing - gridSpacing;
@@ -313,8 +313,8 @@ function initMap() {
             }
         }
         
-        // Render interpolated canvas
-        const canvasW = 300, canvasH = 200;
+        // Render interpolated canvas — high res for smooth gradients
+        const canvasW = 600, canvasH = 400;
         const canvas = document.createElement('canvas');
         canvas.width = canvasW;
         canvas.height = canvasH;
@@ -327,10 +327,13 @@ function initMap() {
                 const gr = (py / canvasH) * (gridRows - 1);
                 const gc = (px / canvasW) * (gridCols - 1);
                 
-                // Bilinear interpolation
+                // Bicubic-style smooth interpolation using Hermite smoothstep
                 const r0 = Math.floor(gr), r1 = Math.min(gridRows - 1, r0 + 1);
                 const c0 = Math.floor(gc), c1 = Math.min(gridCols - 1, c0 + 1);
-                const tr = gr - r0, tc = gc - c0;
+                let tr = gr - r0, tc = gc - c0;
+                // Smoothstep for less blocky transitions
+                tr = tr * tr * (3 - 2 * tr);
+                tc = tc * tc * (3 - 2 * tc);
                 
                 const s00 = grid[r0][c0].score;
                 const s01 = grid[r0][c1].score;
@@ -339,29 +342,34 @@ function initMap() {
                 const score = s00 * (1 - tr) * (1 - tc) + s01 * (1 - tr) * tc + s10 * tr * (1 - tc) + s11 * tr * tc;
                 
                 const rgb = lerpColor(score);
-                const idx = (py * canvasW + px) * 4;
                 // Flip vertically (canvas y=0 is top, but lat increases upward)
                 const fpy = canvasH - 1 - py;
                 const fidx = (fpy * canvasW + px) * 4;
                 imgData.data[fidx] = rgb[0];
                 imgData.data[fidx + 1] = rgb[1];
                 imgData.data[fidx + 2] = rgb[2];
-                imgData.data[fidx + 3] = 90; // transparency
+                imgData.data[fidx + 3] = 80; // transparency
             }
         }
         ctx.putImageData(imgData, 0, 0);
         
-        // Apply gaussian-like blur for smoother look
-        ctx.filter = 'blur(8px)';
-        ctx.drawImage(canvas, 0, 0);
-        ctx.filter = 'none';
+        // Multi-pass blur for ultra-smooth gradients (no visible grid dots)
+        const blurCanvas = document.createElement('canvas');
+        blurCanvas.width = canvasW;
+        blurCanvas.height = canvasH;
+        const bCtx = blurCanvas.getContext('2d');
+        bCtx.filter = 'blur(16px)';
+        bCtx.drawImage(canvas, 0, 0);
+        bCtx.filter = 'blur(8px)';
+        bCtx.drawImage(blurCanvas, 0, 0);
+        bCtx.filter = 'none';
         
         // Remove old overlay
         if (canvasOverlay) map.removeLayer(canvasOverlay);
         
-        // Add as image overlay
-        const imgUrl = canvas.toDataURL();
-        canvasOverlay = L.imageOverlay(imgUrl, [[ps, pw], [pn, pe]], {opacity: 0.55, interactive: false});
+        // Add as image overlay (use the blurred version)
+        const imgUrl = blurCanvas.toDataURL();
+        canvasOverlay = L.imageOverlay(imgUrl, [[ps, pw], [pn, pe]], {opacity: 0.5, interactive: false});
         canvasOverlay.addTo(map);
         
         lastGrid = grid;
