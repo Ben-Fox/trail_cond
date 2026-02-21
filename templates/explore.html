@@ -268,230 +268,52 @@ function initMap() {
     
     // Overlays
     const trailsOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.6, attribution:'Waymarked Trails'});
+    // === Conditions Overlay — Server-rendered tile layer (like real weather maps) ===
+    // Tiles are generated server-side, cached 30min, served as standard {z}/{x}/{y}.png
+    // This is how OpenWeatherMap, RainViewer, and every real weather map works.
+    // Benefits: perfectly stable across zoom/pan, no client-side computation, 
+    // consistent colors at every zoom level, cached by browser + CDN.
     let conditionsActive = false;
-    let conditionsCache = {};  // permanent cache: key → {condition, reasons, score}
-    let conditionsLoading = false;
-    let canvasOverlay = null;
-    let lastCondBounds = null;
-    
-    // Condition severity scores and colors
-    const COND_SCORE = {clear: 0, dry: 0, wet: 1, muddy: 2, snowy: 3, icy: 4};
-    const COND_RGB = {
-        0: [82, 183, 136],   // dry/clear - green
-        1: [176, 137, 104],  // wet - tan
-        2: [127, 85, 57],    // muddy - brown
-        3: [74, 144, 217],   // snowy - blue
-        4: [196, 69, 54],    // icy - red
-    };
+    let conditionsTileLayer = null;
     const COND_LABELS = {clear:'Clear/Dry', dry:'Dry', wet:'Wet', muddy:'Muddy', snowy:'Snowy', icy:'Icy'};
-    
-    function scoreToColor(score) {
-        const lo = Math.floor(Math.max(0, Math.min(3, score)));
-        const hi = Math.min(4, lo + 1);
-        const t = score - lo;
-        const a = COND_RGB[lo], b = COND_RGB[hi];
-        return [
-            Math.round(a[0] + (b[0] - a[0]) * t),
-            Math.round(a[1] + (b[1] - a[1]) * t),
-            Math.round(a[2] + (b[2] - a[2]) * t),
-        ];
-    }
-    
-    // World-fixed grid spacing per zoom tier
-    // Key rule: finer tiers MUST be exact multiples of coarser tiers
-    // so that zooming in adds detail but never contradicts coarse data
-    // 0.6 → 0.3 → 0.15 (each is 2x the previous)
-    function getGridSpacing(zoom) {
-        if (zoom >= 10) return 0.15;  // ~10mi — detailed
-        if (zoom >= 8)  return 0.3;   // ~20mi — medium
-        if (zoom >= 6)  return 0.6;   // ~40mi — coarse
-        return 1.2;                    // ~80mi — very zoomed out
-    }
-    
-    function snapToGrid(val, spacing) {
-        return parseFloat((Math.round(val / spacing) * spacing).toFixed(4));
-    }
-    
-    async function loadConditionsOverlay() {
-        if (!conditionsActive || conditionsLoading) return;
-        const zoom = map.getZoom();
-        if (zoom < 6) {
-            if (canvasOverlay) { map.removeLayer(canvasOverlay); canvasOverlay = null; }
-            return;
-        }
-        
-        conditionsLoading = true;
-        try {
-        const bounds = map.getBounds();
-        const s = bounds.getSouth(), n = bounds.getNorth();
-        const w = bounds.getWest(), e = bounds.getEast();
-        
-        const spacing = getGridSpacing(zoom);
-        
-        // Pad 3 grid cells beyond viewport for smooth edge blending
-        const padCells = 3;
-        const ps = snapToGrid(s - spacing * padCells, spacing);
-        const pn = snapToGrid(n + spacing * padCells, spacing);
-        const pw = snapToGrid(w - spacing * padCells, spacing);
-        const pe = snapToGrid(e + spacing * padCells, spacing);
-        
-        // Build world-fixed grid points — always the same for the same coordinates
-        const gridPts = [];
-        for (let lat = ps; lat <= pn + spacing * 0.01; lat += spacing) {
-            for (let lon = pw; lon <= pe + spacing * 0.01; lon += spacing) {
-                const sLat = snapToGrid(lat, spacing);
-                const sLon = snapToGrid(lon, spacing);
-                const key = `${sLat},${sLon}`;
-                gridPts.push({lat: sLat, lon: sLon, key});
-            }
-        }
-        
-        // Safety cap — if viewport is too large, skip (e.g. zoom 4 on full US)
-        if (gridPts.length > 700) {
-            conditionsLoading = false;
-            return;
-        }
-        
-        // Fetch only uncached points (cache is permanent for the session)
-        const uncached = gridPts.filter(p => !conditionsCache[p.key]);
-        if (uncached.length > 0) {
-            // Batch in groups of 50
-            for (let i = 0; i < uncached.length; i += 50) {
-                const batch = uncached.slice(i, i + 50);
-                try {
-                    const lats = batch.map(p => p.lat.toFixed(4)).join(',');
-                    const lons = batch.map(p => p.lon.toFixed(4)).join(',');
-                    const res = await fetch(`/api/weather/grid?lats=${lats}&lons=${lons}`);
-                    const data = await res.json();
-                    if (Array.isArray(data)) {
-                        for (let j = 0; j < batch.length; j++) {
-                            const inf = data[j] || {condition: 'clear', reasons: []};
-                            inf.score = COND_SCORE[inf.condition] ?? 0;
-                            conditionsCache[batch[j].key] = inf;
-                        }
-                    }
-                } catch(e) {
-                    for (const p of batch) {
-                        conditionsCache[p.key] = {condition: 'clear', reasons: [], score: 0};
-                    }
-                }
-            }
-        }
-        
-        // Build scored points array for IDW
-        const scoredPts = gridPts.map(p => {
-            const inf = conditionsCache[p.key] || {score: 0};
-            return {lat: p.lat, lon: p.lon, key: p.key, score: inf.score ?? 0};
-        });
-        
-        // Render IDW on small canvas — each pixel = weighted average of ALL grid points
-        const canvasW = 240, canvasH = 160;
-        const canvas = document.createElement('canvas');
-        canvas.width = canvasW;
-        canvas.height = canvasH;
-        const ctx = canvas.getContext('2d');
-        const imgData = ctx.createImageData(canvasW, canvasH);
-        
-        const power = 2.8; // IDW power — higher = more localized influence
-        const nPts = scoredPts.length;
-        
-        // Pre-convert to arrays for tight loop performance
-        const ptLats = new Float64Array(nPts);
-        const ptLons = new Float64Array(nPts);
-        const ptScores = new Float64Array(nPts);
-        for (let i = 0; i < nPts; i++) {
-            ptLats[i] = scoredPts[i].lat;
-            ptLons[i] = scoredPts[i].lon;
-            ptScores[i] = scoredPts[i].score;
-        }
-        
-        const latRange = pn - ps;
-        const lonRange = pe - pw;
-        const halfPow = power / 2;
-        
-        for (let py = 0; py < canvasH; py++) {
-            const lat = pn - (py / canvasH) * latRange;
-            for (let px = 0; px < canvasW; px++) {
-                const lon = pw + (px / canvasW) * lonRange;
-                
-                let totalW = 0, wScore = 0;
-                let snapped = false;
-                
-                for (let i = 0; i < nPts; i++) {
-                    const dlat = (lat - ptLats[i]) * 111;
-                    const dlon = (lon - ptLons[i]) * 85;
-                    const dSq = dlat * dlat + dlon * dlon;
-                    if (dSq < 0.01) { wScore = ptScores[i]; totalW = 1; snapped = true; break; }
-                    const wt = 1 / Math.pow(dSq, halfPow);
-                    totalW += wt;
-                    wScore += wt * ptScores[i];
-                }
-                
-                const score = snapped ? wScore : (totalW > 0 ? wScore / totalW : 0);
-                const rgb = scoreToColor(score);
-                const idx = (py * canvasW + px) * 4;
-                imgData.data[idx] = rgb[0];
-                imgData.data[idx + 1] = rgb[1];
-                imgData.data[idx + 2] = rgb[2];
-                imgData.data[idx + 3] = 65;
-            }
-        }
-        ctx.putImageData(imgData, 0, 0);
-        
-        // Upscale + blur for silky smooth look
-        const outW = 480, outH = 320;
-        const outCanvas = document.createElement('canvas');
-        outCanvas.width = outW;
-        outCanvas.height = outH;
-        const oCtx = outCanvas.getContext('2d');
-        oCtx.filter = 'blur(10px)';
-        oCtx.drawImage(canvas, 0, 0, outW, outH);
-        oCtx.filter = 'none';
-        
-        if (canvasOverlay) map.removeLayer(canvasOverlay);
-        canvasOverlay = L.imageOverlay(outCanvas.toDataURL(), [[ps, pw], [pn, pe]], {
-            opacity: 0.5, interactive: false
-        });
-        canvasOverlay.addTo(map);
-        
-        lastCondBounds = {s: ps, n: pn, w: pw, e: pe};
-        
-        } catch(err) { console.error('Conditions overlay error:', err); }
-        conditionsLoading = false;
-    }
     
     document.getElementById('conditionsOverlayToggle').addEventListener('change', function() {
         conditionsActive = this.checked;
         document.getElementById('conditionsLegend').style.display = this.checked ? 'flex' : 'none';
         if (this.checked) {
-            loadConditionsOverlay();
+            if (!conditionsTileLayer) {
+                conditionsTileLayer = L.tileLayer('/api/tiles/conditions/{z}/{x}/{y}.png', {
+                    opacity: 0.6,
+                    maxZoom: 14,
+                    minZoom: 5,
+                    attribution: 'Conditions: Open-Meteo',
+                    errorTileUrl: '', // suppress broken tile images
+                });
+            }
+            conditionsTileLayer.addTo(map);
         } else {
-            if (canvasOverlay) { map.removeLayer(canvasOverlay); canvasOverlay = null; }
+            if (conditionsTileLayer && map.hasLayer(conditionsTileLayer)) {
+                map.removeLayer(conditionsTileLayer);
+            }
         }
     });
     
-    map.on('moveend', function() {
-        if (conditionsActive) loadConditionsOverlay();
-    });
-    
-    // Click to inspect conditions
-    map.on('click', function(e) {
+    // Click to inspect conditions at a point (fetches weather for that point)
+    map.on('click', async function(e) {
         if (!conditionsActive) return;
-        const lat = e.latlng.lat, lon = e.latlng.lng;
-        const spacing = getGridSpacing(map.getZoom());
-        // Snap click to nearest grid point
-        const sLat = snapToGrid(lat, spacing);
-        const sLon = snapToGrid(lon, spacing);
-        const key = `${sLat},${sLon}`;
-        const inf = conditionsCache[key];
-        if (!inf) return;
-        
-        const label = COND_LABELS[inf.condition] || inf.condition || 'Clear';
-        const reasons = (inf.reasons || []).join('<br>');
-        L.popup()
-            .setLatLng(e.latlng)
-            .setContent(`<strong style="font-size:1.1em">${label}</strong><br><small style="color:#555">${reasons}</small>`)
-            .openOn(map);
+        const lat = e.latlng.lat.toFixed(2), lon = e.latlng.lng.toFixed(2);
+        try {
+            const res = await fetch(`/api/weather/history?lat=${lat}&lon=${lon}`);
+            const w = await res.json();
+            if (w.error) return;
+            const inf = w.inference;
+            const label = COND_LABELS[inf.condition] || inf.condition || 'Clear';
+            const reasons = (inf.reasons || []).join('<br>');
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent(`<strong style="font-size:1.1em">${label}</strong><br><small style="color:#555">${reasons}</small>`)
+                .openOn(map);
+        } catch(err) {}
     });
     
     document.getElementById('trailOverlayToggle').addEventListener('change', function() {
