@@ -580,7 +580,7 @@ async function doSearch() {
         
         currentTrails = trails;
         sessionStorage.setItem('trailcondish_results', JSON.stringify(trails));
-        renderResults(trails, !!(center || geoBbox)); // skip fitBounds if we already flew
+        await renderResults(trails, !!(center || geoBbox)); // skip fitBounds if we already flew
     } catch(e) {
         document.getElementById('resultsList').innerHTML = `<p class="muted">Search failed: ${e.message}</p>`;
     }
@@ -664,11 +664,11 @@ async function loadTrailRoute(trail) {
     }
 }
 
-function renderResults(trails, skipFitBounds) {
+async function renderResults(trails, skipFitBounds) {
     clearMarkers();
     const bounds = [];
     
-    document.getElementById('resultCount').textContent = `${trails.length} trail${trails.length !== 1 ? 's' : ''} found`;
+    document.getElementById('resultCount').textContent = `${trails.length} trail${trails.length !== 1 ? 's' : ''} found — loading conditions...`;
     
     // Build list HTML
     let html = '';
@@ -729,19 +729,49 @@ function renderResults(trails, skipFitBounds) {
         }
     });
     
-    // Batch-add all markers to cluster at once (much faster than one-by-one)
-    const allMarkers = [];
-    markerMap.forEach(m => allMarkers.push(m));
-    markerCluster.addLayers(allMarkers);
-    
     document.getElementById('resultsList').innerHTML = html;
     if (bounds.length && !skipFitBounds) {
         programmaticMove = true;
         map.fitBounds(bounds, {padding: [30, 30]});
     }
     
-    // Fetch conditions and update pin icons (non-blocking)
-    updateMarkerConditions(trails);
+    // Fetch conditions BEFORE showing pins — no icon flash
+    await updateMarkerConditions(trails);
+    
+    // Now update all marker icons with the fetched conditions before adding to map
+    for (const t of trails.filter(t => t.lat && t.lon)) {
+        const cached = conditionCache[condCacheKey(t.lat, t.lon)];
+        if (cached) {
+            const mKey = `${t.osm_type}:${t.osm_id}`;
+            const marker = markerMap.get(mKey);
+            if (marker) {
+                marker.setIcon(getConditionIcon(cached.condition));
+                marker._trailCondition = cached.condition;
+                // Update popup with real condition
+                const condLabel = cached.condition.charAt(0).toUpperCase() + cached.condition.slice(1);
+                const condColors = {clear:'#2d6a4f',dry:'#2d6a4f',wet:'#b08968',muddy:'#7f5539',snowy:'#4a90d9',icy:'#c44536'};
+                const reasons = (cached.reasons || []).slice(0, 2).join('<br>');
+                let trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+                if (t.way_ids && t.way_ids.length > 1) trailUrl += `?way_ids=${t.way_ids.join(',')}`;
+                const diff = difficultyLabel(t.difficulty);
+                marker.setPopupContent(
+                    `<b>${t.name}</b><br>` +
+                    `<span style="color:${condColors[cached.condition] || '#2d6a4f'};font-weight:700">${condLabel}</span><br>` +
+                    `<small style="color:#666">${reasons}</small><br>` +
+                    `${diff ? diff + '<br>' : ''}` +
+                    `<a href="${trailUrl}">View Trail</a><br>` +
+                    `<small style="color:#888">Click pin to show route</small>`
+                );
+            }
+        }
+    }
+    
+    // Batch-add all markers to cluster at once (with correct icons already set)
+    const allMarkers = [];
+    markerMap.forEach(m => allMarkers.push(m));
+    markerCluster.addLayers(allMarkers);
+    
+    document.getElementById('resultCount').textContent = `${trails.length} trail${trails.length !== 1 ? 's' : ''} found`;
     
     // Route loading disabled to avoid Overpass rate limits
     // Routes are visible on the Waymarked Trails overlay instead
