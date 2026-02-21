@@ -5,14 +5,51 @@
     <div class="hero-inner">
         <h1>Know Before You Go</h1>
         <p class="hero-sub">Trail conditions powered by weather intelligence and community reports</p>
-        <a href="/explore" class="btn btn-primary">Find a Trail</a>
-        <a href="/report" class="btn btn-secondary">Submit a Report</a>
+    </div>
+</section>
+
+<section class="home-actions">
+    <div class="container">
+        <div class="action-stack">
+            <a href="/explore" class="action-card">
+                <div class="action-card-icon">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+                </div>
+                <div class="action-card-text">
+                    <h3>Find Trail Reports</h3>
+                    <p>Search and view trails, conditions, and community reports. See weather-based condition forecasts and elevation profiles.</p>
+                </div>
+                <svg class="action-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </a>
+            
+            <div class="action-card action-card-clickable" id="openQuickLog">
+                <div class="action-card-icon action-card-icon-accent">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                </div>
+                <div class="action-card-text">
+                    <h3>Conditions Quick Log</h3>
+                    <p>Quickly report trail conditions, spot hazards, or road issues in just a few taps. Waze-style fast reporting.</p>
+                </div>
+                <svg class="action-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+            
+            <a href="/report" class="action-card">
+                <div class="action-card-icon">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                </div>
+                <div class="action-card-text">
+                    <h3>Submit Full Report</h3>
+                    <p>Provide an in-depth conditions report with trail surface, weather, road access, parking, issues, and more to help the community.</p>
+                </div>
+                <svg class="action-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </a>
+        </div>
     </div>
 </section>
 
 <section class="features">
     <div class="container">
-        <h2>What We Do</h2>
+        <h2>How It Works</h2>
         <p class="section-sub">Trail Condish tells you what to expect before you hit the trail — no surprises.</p>
         <div class="card-grid">
             <div class="card">
@@ -20,21 +57,21 @@
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/><circle cx="12" cy="12" r="4"/></svg>
                 </div>
                 <h3>Weather Intelligence</h3>
-                <p>7-day weather history analysis tells you if trails are dry, muddy, snowy, or icy — with reasoning.</p>
+                <p>7-day weather analysis tells you if trails are dry, muddy, snowy, or icy — with reasoning.</p>
             </div>
             <div class="card">
                 <div class="card-icon">
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l4-8 4 6 4-10 6 12"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
                 </div>
-                <h3>Trail Routes</h3>
-                <p>See hiking routes on the map with Waymarked Trails data overlaid on your trail location.</p>
+                <h3>Trails & Elevation</h3>
+                <p>Interactive maps with trail routes, elevation profiles, and multiple basemap styles.</p>
             </div>
             <div class="card">
                 <div class="card-icon">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
                 </div>
-                <h3>Community Reports</h3>
-                <p>Real hikers share current conditions. Vote on reports to surface the most accurate info.</p>
+                <h3>Community Powered</h3>
+                <p>Real hikers share current conditions. Quick logs and full reports keep info fresh.</p>
             </div>
         </div>
     </div>
@@ -42,7 +79,14 @@
 
 <section class="credits">
     <div class="container">
-        <p>Powered by <strong>Recreation.gov</strong>, <strong>Open-Meteo</strong>, and <strong>OpenStreetMap / Waymarked Trails</strong></p>
+        <p>Powered by <strong>Open-Meteo</strong>, <strong>OpenStreetMap</strong>, and <strong>Waymarked Trails</strong></p>
     </div>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('openQuickLog').addEventListener('click', function() {
+    document.getElementById('quickLogFab').click();
+});
+</script>
 {% endblock %}
