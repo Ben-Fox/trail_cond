@@ -164,6 +164,9 @@ def api_weather_grid():
     lon_list = lons.split(',')
     if len(lat_list) != len(lon_list):
         return jsonify({'error': 'Mismatched lats/lons'}), 400
+    # Cap at 100 locations per request (Open-Meteo handles this fine)
+    lat_list = lat_list[:100]
+    lon_list = lon_list[:100]
 
     now = time.time()
     results = []
