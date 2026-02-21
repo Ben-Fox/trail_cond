@@ -109,18 +109,20 @@ function getConditionIcon(condition) {
 
 const defaultIcon = getConditionIcon('clear');
 
+function condCacheKey(lat, lon) {
+    // Consistent key: round to 3 decimal places (~111m precision)
+    return `${parseFloat(lat).toFixed(3)},${parseFloat(lon).toFixed(3)}`;
+}
+
 async function updateMarkerConditions(trails) {
     const withCoords = trails.filter(t => t.lat && t.lon);
     if (!withCoords.length) return;
     
     // Filter out already-cached trails
-    const toFetch = withCoords.filter(t => {
-        const key = `${parseFloat(t.lat).toFixed(2)},${parseFloat(t.lon).toFixed(2)}`;
-        return !conditionCache[key];
-    });
+    const toFetch = withCoords.filter(t => !conditionCache[condCacheKey(t.lat, t.lon)]);
     
     if (toFetch.length > 0) {
-        // Batch in groups of 20 (API limit)
+        // Batch in groups of 20 (Open-Meteo multi-location limit)
         for (let i = 0; i < toFetch.length; i += 20) {
             const batch = toFetch.slice(i, i + 20);
             const lats = batch.map(t => parseFloat(t.lat).toFixed(4)).join(',');
@@ -130,29 +132,34 @@ async function updateMarkerConditions(trails) {
                 const data = await res.json();
                 if (Array.isArray(data)) {
                     for (let j = 0; j < batch.length; j++) {
-                        const key = `${parseFloat(batch[j].lat).toFixed(2)},${parseFloat(batch[j].lon).toFixed(2)}`;
-                        conditionCache[key] = data[j] || {condition: 'clear', reasons: []};
+                        conditionCache[condCacheKey(batch[j].lat, batch[j].lon)] = data[j] || {condition: 'clear', reasons: []};
                     }
                 }
-            } catch(e) { /* keep default icons */ }
+            } catch(e) { /* keep default icons on error */ }
         }
     }
     
-    // Update all marker icons from cache
+    // Update all marker icons + condition tags from cache
+    let changed = false;
     for (const t of withCoords) {
-        const key = `${parseFloat(t.lat).toFixed(2)},${parseFloat(t.lon).toFixed(2)}`;
-        const cached = conditionCache[key];
+        const cached = conditionCache[condCacheKey(t.lat, t.lon)];
         if (cached) {
             const mKey = `${t.osm_type}:${t.osm_id}`;
             const marker = markerMap.get(mKey);
-            if (marker) {
+            if (marker && marker._trailCondition !== cached.condition) {
                 marker.setIcon(getConditionIcon(cached.condition));
                 marker._trailCondition = cached.condition;
+                changed = true;
             }
         }
     }
-    // Refresh clusters so they pick up updated condition colors
-    if (markerCluster) markerCluster.refreshClusters();
+    // Rebuild clusters to pick up updated condition colors
+    if (changed && markerCluster) {
+        const allMarkers = [];
+        markerMap.forEach(m => allMarkers.push(m));
+        markerCluster.clearLayers();
+        markerCluster.addLayers(allMarkers);
+    }
 }
 
 // Trail type filter chips
@@ -746,8 +753,7 @@ function renderResults(trails, skipFitBounds) {
         
         if (t.lat && t.lon) {
             // Use cached condition icon if available, otherwise default
-            const cacheKey = `${parseFloat(t.lat).toFixed(2)},${parseFloat(t.lon).toFixed(2)}`;
-            const cached = conditionCache[cacheKey];
+            const cached = conditionCache[condCacheKey(t.lat, t.lon)];
             const icon = cached ? getConditionIcon(cached.condition) : defaultIcon;
             
             const m = L.marker([t.lat, t.lon], {icon: icon})
@@ -757,11 +763,15 @@ function renderResults(trails, skipFitBounds) {
             m.on('click', function() {
                 loadTrailRoute(this._trailData);
             });
-            markerCluster.addLayer(m);
             markerMap.set(`${t.osm_type}:${t.osm_id}`, m);
             bounds.push([t.lat, t.lon]);
         }
     });
+    
+    // Batch-add all markers to cluster at once (much faster than one-by-one)
+    const allMarkers = [];
+    markerMap.forEach(m => allMarkers.push(m));
+    markerCluster.addLayers(allMarkers);
     
     document.getElementById('resultsList').innerHTML = html;
     if (bounds.length && !skipFitBounds) {
