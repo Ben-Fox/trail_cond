@@ -181,7 +181,13 @@ def parse_osm_trails(data):
             if key not in seen_rel:
                 seen_rel.add(key)
                 lat = lon = None
-                if 'center' in el:
+                # Use first geometry point (trailhead) if available, else center
+                if 'members' in el:
+                    for m in el['members']:
+                        if m.get('type') == 'way' and 'geometry' in m and m['geometry']:
+                            lat, lon = m['geometry'][0]['lat'], m['geometry'][0]['lon']
+                            break
+                if lat is None and 'center' in el:
                     lat, lon = el['center'].get('lat'), el['center'].get('lon')
                 relations.append({
                     'id': key, 'osm_type': 'relation', 'osm_id': osm_id,
@@ -194,7 +200,11 @@ def parse_osm_trails(data):
         elif osm_type == 'way':
             norm = name.strip().lower()
             way_el = {'id': osm_id, 'lat': None, 'lon': None, 'tags': tags, 'name': name}
-            if 'center' in el:
+            # Use first geometry point (trailhead/start) instead of center
+            if 'geometry' in el and el['geometry']:
+                way_el['lat'] = el['geometry'][0]['lat']
+                way_el['lon'] = el['geometry'][0]['lon']
+            elif 'center' in el:
                 way_el['lat'] = el['center'].get('lat')
                 way_el['lon'] = el['center'].get('lon')
             if norm not in way_groups:
@@ -247,10 +257,9 @@ def parse_osm_trails(data):
             rep = cluster[0]
             tags = rep['tags']
             way_ids = [w['id'] for w in cluster]
-            lats = [w['lat'] for w in cluster if w.get('lat')]
-            lons = [w['lon'] for w in cluster if w.get('lon')]
-            lat = sum(lats) / len(lats) if lats else None
-            lon = sum(lons) / len(lons) if lons else None
+            # Use first way's start point (trailhead) not average center
+            lat = rep.get('lat')
+            lon = rep.get('lon')
             
             entry = {
                 'id': f"way:{rep['id']}",
@@ -468,7 +477,7 @@ def api_search():
   way{tp['ways']}["name"]({s},{w},{n},{e});
   relation{tp['rels']}["name"]({s},{w},{n},{e});
 );
-out center tags 100;'''
+out tags geom 100;'''
                 return jsonify(parse_osm_trails(overpass_query(query)))
         elif lat and lon:
             query = f'''[out:json][timeout:25];
@@ -476,7 +485,7 @@ out center tags 100;'''
   way{tp['ways']}["name"](around:8000,{lat},{lon});
   relation{tp['rels']}["name"](around:8000,{lat},{lon});
 );
-out center tags;'''
+out tags geom;'''
         elif state and state in STATE_NAMES:
             state_name = STATE_NAMES[state]
             query = f'''[out:json][timeout:25];
@@ -484,7 +493,7 @@ area["name"="{state_name}"]["admin_level"="4"]->.searchArea;
 (
   relation{tp['rels']}["name"](area.searchArea);
 );
-out center tags 50;'''
+out tags geom 50;'''
         elif q:
             geo = geocode(q)
             results = []
@@ -507,7 +516,7 @@ out center tags 50;'''
   way{tp['ways']}["name"]({bbox_str});
   relation{tp['rels']}["name"]({bbox_str});
 );
-out center tags 100;'''
+out tags geom 100;'''
                 try:
                     results = parse_osm_trails(overpass_query(bbox_query))
                 except Exception:
@@ -518,7 +527,7 @@ out center tags 100;'''
   way{tp['ways']}["name"](around:15000,{geo['lat']},{geo['lon']});
   relation{tp['rels']}["name"](around:15000,{geo['lat']},{geo['lon']});
 );
-out center tags 100;'''
+out tags geom 100;'''
                 try:
                     results = parse_osm_trails(overpass_query(around_query))
                 except Exception:
@@ -528,7 +537,7 @@ out center tags 100;'''
             try:
                 name_query = f'''[out:json][timeout:10];
 relation{tp['rels']}["name"~"{q}",i];
-out center tags 20;'''
+out tags geom 20;'''
                 name_results = parse_osm_trails(overpass_query(name_query))
                 seen_ids = {r['id'] for r in results}
                 for r in name_results:
