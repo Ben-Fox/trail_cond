@@ -508,12 +508,12 @@ async function loadAirQuality(trail) {
         }
         const aqi = aq.us_aqi || 0;
         const label = aq.label || 'Unknown';
-        let color = '#009c4c';
+        let color = '#00e400';
         if (aqi > 300) color = '#7e0023';
-        else if (aqi > 200) color = '#660099';
-        else if (aqi > 150) color = '#cc0033';
+        else if (aqi > 200) color = '#8f3f97';
+        else if (aqi > 150) color = '#ff0000';
         else if (aqi > 100) color = '#ff7e00';
-        else if (aqi > 50) color = '#ffde33';
+        else if (aqi > 50) color = '#ffff00';
         
         let html = `<div class="condition-badge" style="background:${color}">${label.toUpperCase()}</div>`;
         html += `<div class="aqi-value" style="color:${color};font-size:2em;font-weight:800;margin:0.5rem 0;">AQI ${aqi}</div>`;

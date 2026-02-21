@@ -29,19 +29,22 @@ AQ_TILE_CACHE_TTL = 1800  # 30 min
 _aq_point_cache = {}
 AQ_POINT_CACHE_TTL = 900  # 15 min
 
-# US AQI color ramp (value → RGBA)
+# Official EPA AQI color ramp (exact RGB values from EPA style guide)
+# Same colors used by AirNow, Weather.com, IQAir, etc.
+# Interpolation method: IDW (Inverse Distance Weighting) — same as EPA AirNow contour maps
+# Source: EPA AirNow Mapping Fact Sheet + archive.epa.gov/ttn/ozone/web/pdf/rg701.pdf
 AQI_COLORS = [
-    (0,   (  0, 153,  76, 80)),   # Good - green
-    (50,  ( 0, 153,  76, 90)),
-    (51,  (255, 222,  51, 100)),  # Moderate - yellow
-    (100, (255, 222,  51, 110)),
-    (101, (255, 126,   0, 120)),  # USG - orange
+    (0,   (  0, 228,   0, 80)),   # Good - EPA green #00E400
+    (50,  (  0, 228,   0, 90)),
+    (51,  (255, 255,   0, 100)),  # Moderate - EPA yellow #FFFF00
+    (100, (255, 255,   0, 110)),
+    (101, (255, 126,   0, 120)),  # USG - EPA orange #FF7E00
     (150, (255, 126,   0, 130)),
-    (151, (204,   0,  51, 130)),  # Unhealthy - red
-    (200, (204,   0,  51, 140)),
-    (201, (102,   0, 153, 140)),  # Very Unhealthy - purple
-    (300, (102,   0, 153, 150)),
-    (301, (126,   0,  35, 160)),  # Hazardous - maroon
+    (151, (255,   0,   0, 130)),  # Unhealthy - EPA red #FF0000
+    (200, (255,   0,   0, 140)),
+    (201, (143,  63, 151, 140)),  # Very Unhealthy - EPA purple #8F3F97
+    (300, (143,  63, 151, 150)),
+    (301, (126,   0,  35, 160)),  # Hazardous - EPA maroon #7E0023
     (500, (126,   0,  35, 170)),
 ]
 
