@@ -95,6 +95,49 @@ async function loadTrail() {
     if (trail.operator) html += `<p class="trail-operator">Managed by: ${trail.operator}</p>`;
     if (trail.website) html += `<p><a href="${trail.website}" target="_blank" rel="noopener">Official Website</a></p>`;
     
+    // === ACCESS / VIA TRAIL BANNER ===
+    if (trail.access_trail) {
+        const at = trail.access_trail;
+        html += `<div class="access-trail-banner">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 17l5-5-5-5M6 17l5-5-5-5"/></svg>
+            <span>Accessed via <a href="/trail/${at.osm_type}/${at.osm_id}" class="via-trail-link">${at.name}</a></span>
+        </div>`;
+    } else if (trail.has_trailhead) {
+        html += `<div class="trailhead-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Direct trailhead access (road/parking nearby)</span>
+        </div>`;
+    }
+    
+    // === TRAIL SEGMENTS ===
+    if (trail.segments && trail.segments.length > 1) {
+        html += `<div class="section-block trail-segments">
+            <h2>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19l4-4m4-4l4-4M9 5l-5 5m10 4l5 5"/></svg>
+                Trail Segments
+            </h2>
+            <p class="muted">Click a segment to highlight it on the map</p>
+            <div class="segments-list">`;
+        const segColors = ['#c44536','#2d6a4f','#4a90d9','#b08968','#7f5539','#52b788','#e9c46a','#9b59b6'];
+        trail.segments.forEach((seg, idx) => {
+            const color = segColors[idx % segColors.length];
+            const distLabel = seg.distance_mi > 0 ? `${seg.distance_mi} mi` : '';
+            const surfLabel = seg.surface ? seg.surface.charAt(0).toUpperCase() + seg.surface.slice(1) : '';
+            html += `<div class="segment-card" data-seg-idx="${idx}" style="border-left: 4px solid ${color}">
+                <div class="segment-header">
+                    <span class="segment-color" style="background:${color}"></span>
+                    <strong>${seg.name}</strong>
+                </div>
+                <div class="segment-meta">
+                    ${distLabel ? `<span class="tag">${distLabel}</span>` : ''}
+                    ${surfLabel ? `<span class="tag">${surfLabel}</span>` : ''}
+                    ${seg.difficulty ? `<span class="tag">${difficultyLabel(seg.difficulty)}</span>` : ''}
+                </div>
+            </div>`;
+        });
+        html += `</div></div>`;
+    }
+    
     // === ACTION CARDS (matching homepage style) ===
     const reportUrl = `/report?trail=${encodeURIComponent(trail.name)}&id=${OSM_TYPE}:${OSM_ID}`;
     html += `<div class="trail-actions-hero">
@@ -197,12 +240,56 @@ async function loadTrail() {
         trailConditionPin = L.marker([pinLat, pinLon], {icon: condPinIcon})
             .addTo(map).bindPopup(trail.name);
         
-        if (trail.geometry && trail.geometry.length > 1) {
+        const segColors = ['#c44536','#2d6a4f','#4a90d9','#b08968','#7f5539','#52b788','#e9c46a','#9b59b6'];
+        const segPolylines = [];
+        
+        if (trail.segments && trail.segments.length > 1) {
+            // Draw each segment as a separate colored polyline
+            const allBounds = L.latLngBounds();
+            trail.segments.forEach((seg, idx) => {
+                if (!seg.geometry || seg.geometry.length < 2) return;
+                const latlngs = seg.geometry.map(p => [p.lat, p.lon]);
+                const color = segColors[idx % segColors.length];
+                const poly = L.polyline(latlngs, {color, weight: 4, opacity: 0.8}).addTo(map);
+                poly.bindPopup(`<strong>${seg.name}</strong><br>${seg.distance_mi} mi${seg.surface ? ' · ' + seg.surface : ''}`);
+                segPolylines.push(poly);
+                allBounds.extend(poly.getBounds());
+            });
+            if (allBounds.isValid()) map.fitBounds(allBounds, {padding: [30, 30]});
+        } else if (trail.geometry && trail.geometry.length > 1) {
+            // Single trail — draw as one polyline
             const latlngs = trail.geometry.map(p => [p.lat, p.lon]);
             const polyline = L.polyline(latlngs, {color: '#c44536', weight: 4, opacity: 0.8}).addTo(map);
             map.fitBounds(polyline.getBounds(), {padding: [30, 30]});
         } else {
             trailConditionPin.openPopup();
+        }
+        
+        // Segment click-to-highlight from cards
+        if (trail.segments && trail.segments.length > 1) {
+            document.querySelectorAll('.segment-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    const idx = parseInt(this.dataset.segIdx);
+                    // Reset all to normal weight
+                    segPolylines.forEach((p, i) => {
+                        p.setStyle({weight: i === idx ? 7 : 3, opacity: i === idx ? 1.0 : 0.4});
+                    });
+                    // Highlight the selected card
+                    document.querySelectorAll('.segment-card').forEach(c => c.classList.remove('active'));
+                    this.classList.add('active');
+                    // Pan to segment
+                    if (segPolylines[idx]) {
+                        map.fitBounds(segPolylines[idx].getBounds(), {padding: [40, 40]});
+                        segPolylines[idx].openPopup();
+                    }
+                });
+            });
+            
+            // Click map background to reset highlights
+            map.on('click', function() {
+                segPolylines.forEach(p => p.setStyle({weight: 4, opacity: 0.8}));
+                document.querySelectorAll('.segment-card').forEach(c => c.classList.remove('active'));
+            });
         }
         
         const hikingOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.7, attribution:'Waymarked Trails'});

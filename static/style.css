@@ -1145,3 +1145,84 @@ body {
     height: 16px;
     opacity: 0.8;
 }
+
+/* === Access Trail / Via Banner === */
+.access-trail-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+    border: 1px solid #ffcc80;
+    border-radius: 10px;
+    margin: 1rem 0;
+    font-size: 0.95rem;
+    color: #5d4037;
+}
+.access-trail-banner svg { flex-shrink: 0; stroke: #e65100; }
+.via-trail-link {
+    color: #e65100;
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-color: rgba(230, 81, 0, 0.3);
+    text-underline-offset: 2px;
+}
+.via-trail-link:hover { text-decoration-color: #e65100; }
+
+.trailhead-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+    border: 1px solid #a5d6a7;
+    border-radius: 10px;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+    color: #2e7d32;
+}
+.trailhead-badge svg { flex-shrink: 0; stroke: #2e7d32; }
+
+/* === Trail Segments === */
+.trail-segments { margin-top: 1.5rem; }
+.segments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+.segment-card {
+    padding: 0.75rem 1rem;
+    background: var(--cream, #fdfbf7);
+    border: 1px solid #e8e0d4;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.segment-card:hover {
+    background: #f0ebe3;
+    transform: translateX(4px);
+}
+.segment-card.active {
+    background: #f0ebe3;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transform: translateX(4px);
+}
+.segment-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.segment-color {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.segment-meta {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.35rem;
+    padding-left: 1.25rem;
+    flex-wrap: wrap;
+}

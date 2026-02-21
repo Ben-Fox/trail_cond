@@ -870,6 +870,115 @@ out geom tags;'''
             'website': tags.get('website', tags.get('url', '')),
         }
         
+        # === Trailhead detection + connected trail network ===
+        trail_segments = []  # individual segments with their own geometry + stats
+        access_trail = None  # "via" trail if no direct road/parking access
+        has_trailhead = False
+        
+        if geometry and len(geometry) > 1:
+            start_pt = geometry[0]
+            end_pt = geometry[-1]
+            
+            try:
+                # Check if start or end connects to road/parking/trailhead
+                # Query for nearby road nodes, parking, or trailhead tags within ~50m
+                th_query = f'''[out:json][timeout:10];
+(
+  way(around:50,{start_pt['lat']},{start_pt['lon']})["highway"~"^(residential|tertiary|secondary|primary|trunk|service|unclassified|track)$"];
+  node(around:100,{start_pt['lat']},{start_pt['lon']})["amenity"="parking"];
+  node(around:100,{start_pt['lat']},{start_pt['lon']})["highway"="trailhead"];
+  way(around:50,{end_pt['lat']},{end_pt['lon']})["highway"~"^(residential|tertiary|secondary|primary|trunk|service|unclassified|track)$"];
+  node(around:100,{end_pt['lat']},{end_pt['lon']})["amenity"="parking"];
+  node(around:100,{end_pt['lat']},{end_pt['lon']})["highway"="trailhead"];
+);
+out tags 5;'''
+                th_data = overpass_query(th_query)
+                th_elements = th_data.get('elements', [])
+                has_trailhead = len(th_elements) > 0
+                
+                # If no direct trailhead, find connecting trails at start/end points
+                if not has_trailhead:
+                    conn_query = f'''[out:json][timeout:10];
+(
+  way(around:30,{start_pt['lat']},{start_pt['lon']})["highway"~"^(path|footway|track|bridleway|cycleway)$"]["name"];
+  way(around:30,{end_pt['lat']},{end_pt['lon']})["highway"~"^(path|footway|track|bridleway|cycleway)$"]["name"];
+);
+out center tags;'''
+                    conn_data = overpass_query(conn_query)
+                    conn_els = conn_data.get('elements', [])
+                    trail_name_lower = result['name'].lower().strip()
+                    for ce in conn_els:
+                        ce_name = ce.get('tags', {}).get('name', '').strip()
+                        if ce_name and ce_name.lower() != trail_name_lower:
+                            ce_lat = ce.get('center', {}).get('lat')
+                            ce_lon = ce.get('center', {}).get('lon')
+                            access_trail = {
+                                'name': ce_name,
+                                'osm_type': 'way',
+                                'osm_id': ce['id'],
+                                'lat': ce_lat,
+                                'lon': ce_lon,
+                            }
+                            break
+            except Exception as e:
+                pass  # Non-critical — don't fail the whole detail page
+        
+        # Build per-segment info for multi-way trails
+        if osm_type == 'way' and extra_way_ids:
+            for seg in elements:
+                if 'geometry' not in seg:
+                    continue
+                seg_geo = [{'lat': p['lat'], 'lon': p['lon']} for p in seg['geometry']]
+                seg_name = seg.get('tags', {}).get('name', f"Segment {seg['id']}")
+                seg_dist = 0
+                for i in range(len(seg_geo) - 1):
+                    lat1, lon1 = radians(seg_geo[i]['lat']), radians(seg_geo[i]['lon'])
+                    lat2, lon2 = radians(seg_geo[i+1]['lat']), radians(seg_geo[i+1]['lon'])
+                    dlat = lat2 - lat1
+                    dlon = lon2 - lon1
+                    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
+                    s = 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
+                    if s < 0.5:
+                        seg_dist += s
+                trail_segments.append({
+                    'osm_id': seg['id'],
+                    'name': seg_name,
+                    'surface': seg.get('tags', {}).get('surface', ''),
+                    'difficulty': seg.get('tags', {}).get('sac_scale', ''),
+                    'distance_km': round(seg_dist, 2),
+                    'distance_mi': round(seg_dist * 0.621371, 2),
+                    'geometry': seg_geo,
+                })
+        elif osm_type == 'relation' and way_els:
+            for way in way_els:
+                if 'geometry' not in way:
+                    continue
+                seg_geo = [{'lat': p['lat'], 'lon': p['lon']} for p in way['geometry']]
+                seg_name = way.get('tags', {}).get('name', f"Section {way['id']}")
+                seg_dist = 0
+                for i in range(len(seg_geo) - 1):
+                    lat1, lon1 = radians(seg_geo[i]['lat']), radians(seg_geo[i]['lon'])
+                    lat2, lon2 = radians(seg_geo[i+1]['lat']), radians(seg_geo[i+1]['lon'])
+                    dlat = lat2 - lat1
+                    dlon = lon2 - lon1
+                    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
+                    s = 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
+                    if s < 0.5:
+                        seg_dist += s
+                trail_segments.append({
+                    'osm_id': way['id'],
+                    'name': seg_name,
+                    'surface': way.get('tags', {}).get('surface', ''),
+                    'difficulty': way.get('tags', {}).get('sac_scale', ''),
+                    'distance_km': round(seg_dist, 2),
+                    'distance_mi': round(seg_dist * 0.621371, 2),
+                    'geometry': seg_geo,
+                })
+        
+        result['has_trailhead'] = has_trailhead
+        result['access_trail'] = access_trail
+        result['segments'] = trail_segments if len(trail_segments) > 1 else []
+        
         # Enrich with USGS data if we have coordinates
         if lat and lon:
             try:
