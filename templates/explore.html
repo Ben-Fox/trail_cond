@@ -297,12 +297,15 @@ function initMap() {
         ];
     }
     
-    // World-fixed grid spacing — always the same points for the same zoom level
-    // This ensures panning/zooming never changes what conditions show at a location
+    // World-fixed grid spacing per zoom tier
+    // Key rule: finer tiers MUST be exact multiples of coarser tiers
+    // so that zooming in adds detail but never contradicts coarse data
+    // 0.6 → 0.3 → 0.15 (each is 2x the previous)
     function getGridSpacing(zoom) {
-        // Single fixed spacing: 0.15° (~10mi). Dense enough for accuracy,
-        // sparse enough for speed. Same grid at ALL zoom levels = 100% consistency.
-        return 0.15;
+        if (zoom >= 10) return 0.15;  // ~10mi — detailed
+        if (zoom >= 8)  return 0.3;   // ~20mi — medium
+        if (zoom >= 6)  return 0.6;   // ~40mi — coarse
+        return 1.2;                    // ~80mi — very zoomed out
     }
     
     function snapToGrid(val, spacing) {
@@ -312,7 +315,7 @@ function initMap() {
     async function loadConditionsOverlay() {
         if (!conditionsActive || conditionsLoading) return;
         const zoom = map.getZoom();
-        if (zoom < 5) {
+        if (zoom < 6) {
             if (canvasOverlay) { map.removeLayer(canvasOverlay); canvasOverlay = null; }
             return;
         }
@@ -341,6 +344,12 @@ function initMap() {
                 const key = `${sLat},${sLon}`;
                 gridPts.push({lat: sLat, lon: sLon, key});
             }
+        }
+        
+        // Safety cap — if viewport is too large, skip (e.g. zoom 4 on full US)
+        if (gridPts.length > 700) {
+            conditionsLoading = false;
+            return;
         }
         
         // Fetch only uncached points (cache is permanent for the session)
