@@ -271,24 +271,38 @@ function initMap() {
     let conditionsActive = false;
     let conditionsCache = {};
     let conditionsLoading = false;
-    let conditionPolygons = null; // L.layerGroup for condition regions
-    let lastCondData = null; // for click-to-inspect
+    let canvasOverlay = null;
+    let lastCondPoints = null;
+    let lastCondBounds = null;
     
-    // Condition colors (solid fills for regions)
-    const COND_COLORS = {
-        clear: {fill: '#52b788', stroke: '#2d6a4f', label: 'Clear/Dry'},
-        dry:   {fill: '#52b788', stroke: '#2d6a4f', label: 'Dry'},
-        wet:   {fill: '#deb887', stroke: '#b08968', label: 'Wet'},
-        muddy: {fill: '#a0714f', stroke: '#7f5539', label: 'Muddy'},
-        snowy: {fill: '#7cb8e8', stroke: '#4a90d9', label: 'Snowy'},
-        icy:   {fill: '#e07060', stroke: '#c44536', label: 'Icy'},
+    // Condition severity scores and colors for IDW blending
+    const COND_SCORE = {clear: 0, dry: 0, wet: 1, muddy: 2, snowy: 3, icy: 4};
+    const COND_RGB = {
+        0: [82, 183, 136],   // dry/clear - green
+        1: [176, 137, 104],  // wet - tan
+        2: [127, 85, 57],    // muddy - brown
+        3: [74, 144, 217],   // snowy - blue
+        4: [196, 69, 54],    // icy - red
     };
+    const COND_LABELS = {clear:'Clear/Dry', dry:'Dry', wet:'Wet', muddy:'Muddy', snowy:'Snowy', icy:'Icy'};
+    
+    function scoreToColor(score) {
+        const lo = Math.floor(Math.max(0, Math.min(3, score)));
+        const hi = Math.min(4, lo + 1);
+        const t = score - lo;
+        const a = COND_RGB[lo], b = COND_RGB[hi];
+        return [
+            Math.round(a[0] + (b[0] - a[0]) * t),
+            Math.round(a[1] + (b[1] - a[1]) * t),
+            Math.round(a[2] + (b[2] - a[2]) * t),
+        ];
+    }
     
     async function loadConditionsOverlay() {
         if (!conditionsActive || conditionsLoading) return;
         const zoom = map.getZoom();
         if (zoom < 5) {
-            if (conditionPolygons) { map.removeLayer(conditionPolygons); conditionPolygons = null; }
+            if (canvasOverlay) { map.removeLayer(canvasOverlay); canvasOverlay = null; }
             return;
         }
         
@@ -300,34 +314,28 @@ function initMap() {
         const latSpan = n - s;
         const lonSpan = e - w;
         
-        // Use sparse sampling — weather doesn't change every few miles
-        // Sample a fixed ~6x6 grid across the viewport (36 points max)
-        // At higher zoom, use smaller absolute spacing for finer detail
-        const SAMPLES = zoom >= 11 ? 8 : zoom >= 8 ? 6 : 5;
-        const latStep = latSpan / (SAMPLES - 1);
-        const lonStep = lonSpan / (SAMPLES - 1);
+        // Pad bounds so colors bleed past edges (no hard cutoff)
+        const padLat = latSpan * 0.4, padLon = lonSpan * 0.4;
+        const ps = s - padLat, pn = n + padLat;
+        const pw = w - padLon, pe = e + padLon;
         
-        // Pad bounds slightly for edge smoothing
-        const pad = 0.3;
-        const ps = s - latStep * pad, pn = n + latStep * pad;
-        const pw = w - lonStep * pad, pe = e + lonStep * pad;
-        
-        // Build sample points (snap to 2 decimal places for cache reuse)
-        const points = [];
-        for (let r = 0; r < SAMPLES + 1; r++) {
-            for (let c = 0; c < SAMPLES + 1; c++) {
+        // Sparse sample points — weather is regional
+        // ~5x5 to 7x7 depending on zoom (25-49 points)
+        const SAMPLES = zoom >= 11 ? 7 : zoom >= 8 ? 6 : 5;
+        const samplePoints = [];
+        for (let r = 0; r <= SAMPLES; r++) {
+            for (let c = 0; c <= SAMPLES; c++) {
                 const lat = parseFloat((ps + (pn - ps) * r / SAMPLES).toFixed(2));
                 const lon = parseFloat((pw + (pe - pw) * c / SAMPLES).toFixed(2));
                 const key = `${lat},${lon}`;
-                points.push({lat, lon, key, r, c});
+                samplePoints.push({lat, lon, key});
             }
         }
         
-        // Fetch uncached points
-        const uncached = points.filter(p => !conditionsCache[p.key]);
+        // Fetch uncached
+        const uncached = samplePoints.filter(p => !conditionsCache[p.key]);
         if (uncached.length > 0) {
             try {
-                // Batch in groups of 50 (Open-Meteo limit)
                 for (let i = 0; i < uncached.length; i += 50) {
                     const batch = uncached.slice(i, i + 50);
                     const lats = batch.map(p => p.lat.toFixed(4)).join(',');
@@ -345,104 +353,81 @@ function initMap() {
             }
         }
         
-        // Assign conditions to points
-        for (const p of points) {
-            p.cond = (conditionsCache[p.key] || {condition: 'clear'}).condition || 'clear';
-            if (p.cond === 'dry') p.cond = 'clear'; // merge dry+clear
-        }
+        // Assign scores to sample points
+        const scoredPts = samplePoints.map(p => {
+            const inf = conditionsCache[p.key] || {condition: 'clear'};
+            return {lat: p.lat, lon: p.lon, key: p.key, score: COND_SCORE[inf.condition] ?? 0};
+        });
         
-        // Build grid for region detection
-        const rows = SAMPLES + 1, cols = SAMPLES + 1;
-        const grid = [];
-        for (let r = 0; r < rows; r++) {
-            grid[r] = [];
-            for (let c = 0; c < cols; c++) {
-                const pt = points[r * cols + c];
-                grid[r][c] = pt;
-            }
-        }
+        // Render using Inverse Distance Weighting (IDW)
+        // Each pixel computes a smooth weighted average from ALL sample points
+        // This creates organic, seamless boundaries — like actual weather radar
+        const canvasW = 200, canvasH = 140; // small canvas, CSS upscales smoothly
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasW;
+        canvas.height = canvasH;
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.createImageData(canvasW, canvasH);
         
-        // Region-based rendering: flood-fill same-condition cells into polygons
-        const visited = Array.from({length: rows}, () => Array(cols).fill(false));
-        const regions = [];
+        // IDW power parameter — higher = sharper boundaries, lower = smoother blend
+        const power = 2.5;
         
-        for (let r = 0; r < rows - 1; r++) {
-            for (let c = 0; c < cols - 1; c++) {
-                if (visited[r][c]) continue;
-                const cond = grid[r][c].cond;
-                // BFS to find contiguous cells with same condition
-                const cells = [];
-                const queue = [[r, c]];
-                visited[r][c] = true;
-                while (queue.length > 0) {
-                    const [cr, cc] = queue.shift();
-                    cells.push([cr, cc]);
-                    // Check 4-neighbors (only within grid cell bounds)
-                    for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-                        const nr = cr + dr, nc = cc + dc;
-                        if (nr >= 0 && nr < rows - 1 && nc >= 0 && nc < cols - 1 && !visited[nr][nc]) {
-                            if (grid[nr][nc].cond === cond) {
-                                visited[nr][nc] = true;
-                                queue.push([nr, nc]);
-                            }
-                        }
+        // Precompute pixel coordinates in geo space
+        for (let py = 0; py < canvasH; py++) {
+            const lat = pn - (py / canvasH) * (pn - ps); // top = north
+            for (let px = 0; px < canvasW; px++) {
+                const lon = pw + (px / canvasW) * (pe - pw);
+                
+                // IDW: weighted average of all sample points
+                let totalWeight = 0;
+                let weightedScore = 0;
+                
+                for (const sp of scoredPts) {
+                    const dlat = (lat - sp.lat) * 111; // rough km
+                    const dlon = (lon - sp.lon) * 85;  // rough km at mid-lat
+                    const distSq = dlat * dlat + dlon * dlon;
+                    
+                    if (distSq < 0.001) {
+                        // Essentially on this point — use its score directly
+                        weightedScore = sp.score;
+                        totalWeight = 1;
+                        break;
                     }
+                    const w = 1 / Math.pow(distSq, power / 2);
+                    totalWeight += w;
+                    weightedScore += w * sp.score;
                 }
-                regions.push({cond, cells});
+                
+                const score = totalWeight > 0 ? weightedScore / totalWeight : 0;
+                const rgb = scoreToColor(score);
+                const idx = (py * canvasW + px) * 4;
+                imgData.data[idx] = rgb[0];
+                imgData.data[idx + 1] = rgb[1];
+                imgData.data[idx + 2] = rgb[2];
+                imgData.data[idx + 3] = 70; // semi-transparent
             }
         }
+        ctx.putImageData(imgData, 0, 0);
         
-        // Convert regions to geographic polygons
-        // Each cell [r,c] spans from grid[r][c] to grid[r+1][c+1]
-        // For a region of contiguous cells, build the outer boundary
-        if (conditionPolygons) { map.removeLayer(conditionPolygons); }
-        conditionPolygons = L.layerGroup();
+        // Single blur pass on a larger canvas for smooth edges
+        const blurW = 400, blurH = 280;
+        const blurCanvas = document.createElement('canvas');
+        blurCanvas.width = blurW;
+        blurCanvas.height = blurH;
+        const bCtx = blurCanvas.getContext('2d');
+        bCtx.filter = 'blur(12px)';
+        bCtx.drawImage(canvas, 0, 0, blurW, blurH);
+        bCtx.filter = 'none';
         
-        for (const region of regions) {
-            const colors = COND_COLORS[region.cond] || COND_COLORS.clear;
-            
-            // Simple approach: draw each cell as a rectangle, let overlap create solid regions
-            // With semi-transparent fill, overlapping cells blend seamlessly
-            for (const [r, c] of region.cells) {
-                const sw = grid[r][c];
-                const ne = grid[r + 1][c + 1];
-                const bounds = [[sw.lat, sw.lon], [ne.lat, ne.lon]];
-                const rect = L.rectangle(bounds, {
-                    color: colors.stroke,
-                    weight: 0, // no border between cells
-                    fillColor: colors.fill,
-                    fillOpacity: 0.25,
-                    interactive: false,
-                });
-                conditionPolygons.addLayer(rect);
-            }
-            
-            // Draw subtle border only at condition boundaries
-            for (const [r, c] of region.cells) {
-                const sw = grid[r][c];
-                const ne = grid[r + 1][c + 1];
-                // Check each edge — draw border if neighbor has different condition
-                // Top edge
-                if (r > 0 && grid[r - 1][c].cond !== region.cond) {
-                    conditionPolygons.addLayer(L.polyline([[sw.lat, sw.lon], [sw.lat, ne.lon]], {color: colors.stroke, weight: 1.5, opacity: 0.4, interactive: false}));
-                }
-                // Bottom edge
-                if (r < rows - 2 && grid[r + 1][c].cond !== region.cond) {
-                    conditionPolygons.addLayer(L.polyline([[ne.lat, sw.lon], [ne.lat, ne.lon]], {color: colors.stroke, weight: 1.5, opacity: 0.4, interactive: false}));
-                }
-                // Left edge
-                if (c > 0 && grid[r][c - 1].cond !== region.cond) {
-                    conditionPolygons.addLayer(L.polyline([[sw.lat, sw.lon], [ne.lat, sw.lon]], {color: colors.stroke, weight: 1.5, opacity: 0.4, interactive: false}));
-                }
-                // Right edge
-                if (c < cols - 2 && grid[r][c + 1].cond !== region.cond) {
-                    conditionPolygons.addLayer(L.polyline([[sw.lat, ne.lon], [ne.lat, ne.lon]], {color: colors.stroke, weight: 1.5, opacity: 0.4, interactive: false}));
-                }
-            }
-        }
+        // Remove old overlay
+        if (canvasOverlay) map.removeLayer(canvasOverlay);
         
-        conditionPolygons.addTo(map);
-        lastCondData = {grid, rows, cols, ps, pn, pw, pe};
+        const imgUrl = blurCanvas.toDataURL();
+        canvasOverlay = L.imageOverlay(imgUrl, [[ps, pw], [pn, pe]], {opacity: 0.55, interactive: false});
+        canvasOverlay.addTo(map);
+        
+        lastCondPoints = scoredPts;
+        lastCondBounds = {s: ps, n: pn, w: pw, e: pe};
         
         } catch(err) { console.error('Conditions overlay error:', err); }
         conditionsLoading = false;
@@ -454,7 +439,7 @@ function initMap() {
         if (this.checked) {
             loadConditionsOverlay();
         } else {
-            if (conditionPolygons) { map.removeLayer(conditionPolygons); conditionPolygons = null; }
+            if (canvasOverlay) { map.removeLayer(canvasOverlay); canvasOverlay = null; }
         }
     });
     
@@ -462,25 +447,22 @@ function initMap() {
         if (conditionsActive) loadConditionsOverlay();
     });
     
-    // Click on map to see conditions at that point
+    // Click to inspect conditions at a point
     map.on('click', function(e) {
-        if (!conditionsActive || !lastCondData) return;
-        const {grid, rows, cols, ps, pn, pw, pe} = lastCondData;
+        if (!conditionsActive || !lastCondPoints || !lastCondBounds) return;
         const lat = e.latlng.lat, lon = e.latlng.lng;
-        if (lat < ps || lat > pn || lon < pw || lon > pe) return;
         
-        // Find which grid cell contains the click
-        const r = Math.floor((lat - ps) / (pn - ps) * (rows - 1));
-        const c = Math.floor((lon - pw) / (pe - pw) * (cols - 1));
-        const cr = Math.max(0, Math.min(rows - 2, r));
-        const cc = Math.max(0, Math.min(cols - 2, c));
-        const cell = grid[cr] && grid[cr][cc];
-        if (!cell) return;
-        const inf = conditionsCache[cell.key];
+        // Find nearest sample point
+        let nearest = null, minDist = Infinity;
+        for (const sp of lastCondPoints) {
+            const d = Math.pow(lat - sp.lat, 2) + Math.pow(lon - sp.lon, 2);
+            if (d < minDist) { minDist = d; nearest = sp; }
+        }
+        if (!nearest) return;
+        const inf = conditionsCache[nearest.key];
         if (!inf) return;
         
-        const colors = COND_COLORS[inf.condition] || COND_COLORS.clear;
-        const label = colors.label || inf.condition;
+        const label = COND_LABELS[inf.condition] || inf.condition || 'Clear';
         const reasons = (inf.reasons || []).join('<br>');
         L.popup()
             .setLatLng(e.latlng)
