@@ -356,6 +356,19 @@ document.getElementById('submitReport').addEventListener('click', async function
     btn.textContent = 'Submit Report';
 });
 
+// Auto-fill trail from URL params (when coming from a trail detail page)
+(function autoFillFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const trailName = params.get('trail');
+    const trailId = params.get('id');
+    if (trailName && trailId) {
+        const parts = trailId.split(':');
+        if (parts.length === 2) {
+            selectTrail({osm_type: parts[0], osm_id: parts[1], name: trailName});
+        }
+    }
+})();
+
 // Submit another
 document.getElementById('submitAnother').addEventListener('click', function(e) {
     e.preventDefault();
