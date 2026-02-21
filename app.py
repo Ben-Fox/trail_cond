@@ -492,8 +492,10 @@ def api_autocomplete():
             osm_value = props.get('osm_value', '')
             osm_key = props.get('osm_key', '')
             score = 0
-            # Boost natural features, parks, trails
-            if osm_key == 'natural' or osm_value in ('peak', 'mountain', 'lake', 'river', 'valley', 'water'):
+            # Boost natural features, parks, trails, and places (towns/cities)
+            if osm_key == 'place' and osm_value in ('city', 'town', 'village', 'hamlet', 'suburb', 'borough'):
+                score += 5  # Towns/cities should always rank highest for location searches
+            elif osm_key == 'natural' or osm_value in ('peak', 'mountain', 'lake', 'river', 'valley', 'water'):
                 score += 3
             elif osm_key == 'leisure' or 'park' in osm_value or 'forest' in osm_value:
                 score += 2
