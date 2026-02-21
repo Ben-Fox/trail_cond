@@ -443,6 +443,77 @@ async function doSearch() {
     }
 }
 
+// Condition colors for trail routes
+const TRAIL_CONDITION_COLORS = {
+    snowy: '#4a90d9',
+    icy: '#8bb8e8',
+    muddy: '#7f5539',
+    wet: '#b08968',
+    dry: '#2d6a4f',
+    clear: '#2d6a4f',
+};
+
+let activeRouteLayer = null;
+let routeConditionCache = {};
+
+async function loadTrailRoute(trail) {
+    // Remove previous active route
+    if (activeRouteLayer) {
+        map.removeLayer(activeRouteLayer);
+        activeRouteLayer = null;
+    }
+    
+    try {
+        const res = await fetch(`/api/trail/${trail.osm_type}/${trail.osm_id}`);
+        const data = await res.json();
+        if (!data.geometry || data.geometry.length < 2) return;
+        
+        // Get condition color — check weather
+        let color = '#c44536'; // default red
+        const condKey = `${trail.osm_type}:${trail.osm_id}`;
+        
+        if (routeConditionCache[condKey]) {
+            color = routeConditionCache[condKey];
+        } else if (data.lat && data.lon) {
+            try {
+                const wres = await fetch(`/api/weather/history?lat=${data.lat.toFixed(4)}&lon=${data.lon.toFixed(4)}`);
+                const wdata = await wres.json();
+                if (wdata.inference) {
+                    color = TRAIL_CONDITION_COLORS[wdata.inference.condition] || '#2d6a4f';
+                    routeConditionCache[condKey] = color;
+                }
+            } catch(e) {}
+        }
+        
+        const latlngs = data.geometry.map(p => [p.lat, p.lon]);
+        
+        // Draw with casing for visibility
+        const casing = L.polyline(latlngs, {color: '#fff', weight: 7, opacity: 0.6});
+        const line = L.polyline(latlngs, {color: color, weight: 4, opacity: 0.9});
+        activeRouteLayer = L.layerGroup([casing, line]).addTo(map);
+        
+        // Build condition label
+        let condLabel = '';
+        if (routeConditionCache[condKey]) {
+            const cond = Object.keys(TRAIL_CONDITION_COLORS).find(k => TRAIL_CONDITION_COLORS[k] === color) || 'unknown';
+            condLabel = `<br><span style="color:${color}; font-weight:700;">${cond.charAt(0).toUpperCase() + cond.slice(1)}</span>`;
+        }
+        
+        // Update popup
+        const trailUrl = `/trail/${trail.osm_type}/${trail.osm_id}`;
+        const diff = difficultyLabel(trail.difficulty);
+        const dist = data.distance_km ? `${data.distance_km} km` : '';
+        L.popup()
+            .setLatLng(latlngs[Math.floor(latlngs.length / 2)])
+            .setContent(`<b>${trail.name}</b>${condLabel}<br>${diff ? diff + ' · ' : ''}${dist}<br><a href="${trailUrl}">View Trail →</a>`)
+            .openOn(map);
+        
+        map.fitBounds(L.latLngBounds(latlngs), {padding: [40, 40]});
+    } catch(e) {
+        console.error('Failed to load trail route:', e);
+    }
+}
+
 function renderResults(trails, skipFitBounds) {
     clearMarkers();
     const bounds = [];
@@ -469,7 +540,11 @@ function renderResults(trails, skipFitBounds) {
         
         if (t.lat && t.lon) {
             const m = L.marker([t.lat, t.lon])
-                .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a>`);
+                .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`);
+            m._trailData = t;
+            m.on('click', function() {
+                loadTrailRoute(this._trailData);
+            });
             markerCluster.addLayer(m);
             bounds.push([t.lat, t.lon]);
         }
