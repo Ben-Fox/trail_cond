@@ -805,11 +805,11 @@ out geom tags;'''
                 if member.get('type') == 'way' and 'geometry' in member:
                     geometry.extend([{'lat': p['lat'], 'lon': p['lon']} for p in member['geometry']])
         
-        # Calculate center from geometry
+        # Use first point of geometry as trailhead/start position
         lat = lon = None
         if geometry:
-            lat = sum(p['lat'] for p in geometry) / len(geometry)
-            lon = sum(p['lon'] for p in geometry) / len(geometry)
+            lat = geometry[0]['lat']
+            lon = geometry[0]['lon']
         elif 'center' in el:
             lat = el['center']['lat']
             lon = el['center']['lon']

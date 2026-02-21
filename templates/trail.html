@@ -183,12 +183,16 @@ async function loadTrail() {
         const baseCfg = BASEMAPS[savedBase] || BASEMAPS.carto;
         let currentBase = L.tileLayer(baseCfg.url, {attribution: baseCfg.attr, subdomains: baseCfg.subdomains || '', maxZoom: baseCfg.maxZoom || 20}).addTo(map);
         
+        // Use first geometry point (trailhead) for pin if available
+        const pinLat = (trail.geometry && trail.geometry.length > 0) ? trail.geometry[0].lat : trail.lat;
+        const pinLon = (trail.geometry && trail.geometry.length > 0) ? trail.geometry[0].lon : trail.lon;
+
         // Add condition pin marker (will be updated after weather loads)
         const condPinIcon = L.icon({
             iconUrl: '/static/pins/cond-clear.svg',
             iconSize: [40, 50], iconAnchor: [20, 50], popupAnchor: [0, -50]
         });
-        trailConditionPin = L.marker([trail.lat, trail.lon], {icon: condPinIcon})
+        trailConditionPin = L.marker([pinLat, pinLon], {icon: condPinIcon})
             .addTo(map).bindPopup(trail.name);
         
         if (trail.geometry && trail.geometry.length > 1) {
