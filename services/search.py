@@ -220,7 +220,74 @@ def api_search():
     usgs_future = None
 
     try:
-        if bbox:
+        if q and not bbox and not (lat and lon and not q):
+            # Text query takes priority — handle it first
+            geo = geocode(q)
+            results = []
+            usgs_future = None
+
+            if geo and geo['bbox']:
+                south, north, west, east = geo['bbox']
+                lat_span = north - south
+                lon_span = east - west
+                if lat_span < 0.2:
+                    pad_lat = (0.2 - lat_span) / 2
+                    south -= pad_lat
+                    north += pad_lat
+                if lon_span < 0.2:
+                    pad_lon = (0.2 - lon_span) / 2
+                    west -= pad_lon
+                    east += pad_lon
+
+                bbox_str = f"{south},{west},{north},{east}"
+                bbox_query = f'''[out:json][timeout:25];
+(
+  way{tp['ways']}["name"]({bbox_str});
+  relation{tp['rels']}["name"]({bbox_str});
+);
+out center tags 100;'''
+                try:
+                    results = parse_osm_trails(overpass_query(bbox_query))
+                except Exception:
+                    pass
+
+                usgs_future = fetch_usgs_for_bbox(
+                    south, west, north, east, trail_type)
+
+            elif geo:
+                around_query = f'''[out:json][timeout:25];
+(
+  way{tp['ways']}["name"](around:15000,{geo['lat']},{geo['lon']});
+  relation{tp['rels']}["name"](around:15000,{geo['lat']},{geo['lon']});
+);
+out center tags 100;'''
+                results = parse_osm_trails(overpass_query(around_query))
+
+            if not results:
+                name_query = f'''[out:json][timeout:25];
+(
+  way["highway"~"path|footway|track|bridleway|cycleway"]["name"~"{q}",i];
+  relation["route"="hiking"]["name"~"{q}",i];
+);
+out center tags 20;'''
+                name_results = parse_osm_trails(overpass_query(name_query))
+                results = name_results
+
+            if usgs_future:
+                try:
+                    usgs_trails = usgs_future.result(timeout=3)
+                    results = merge_usgs_into_osm(results, usgs_trails)
+                except Exception:
+                    pass
+
+            response = {'trails': results[:100]}
+            if geo:
+                response['center'] = {'lat': geo['lat'], 'lon': geo['lon']}
+                if geo.get('bbox'):
+                    response['bbox'] = geo['bbox']
+            return jsonify(response)
+
+        elif bbox:
             parts = bbox.split(',')
             if len(parts) == 4:
                 s, w, n, e = parts
@@ -256,75 +323,6 @@ area["name"="{state_name}"]["admin_level"="4"]->.searchArea;
   relation{tp['rels']}["name"](area.searchArea);
 );
 out center tags 50;'''
-        elif q:
-            geo = geocode(q)
-            results = []
-            usgs_future = None
-
-            if geo and geo['bbox']:
-                south, north, west, east = geo['bbox']
-                lat_span = north - south
-                lon_span = east - west
-                if lat_span < 0.2:
-                    pad_lat = (0.2 - lat_span) / 2
-                    south -= pad_lat
-                    north += pad_lat
-                if lon_span < 0.2:
-                    pad_lon = (0.2 - lon_span) / 2
-                    west -= pad_lon
-                    east += pad_lon
-                usgs_future = fetch_usgs_for_bbox(south, west, north, east, trail_type)
-                bbox_str = f"{south},{west},{north},{east}"
-                bbox_query = f'''[out:json][timeout:25];
-(
-  way{tp['ways']}["name"]({bbox_str});
-  relation{tp['rels']}["name"]({bbox_str});
-);
-out center tags 100;'''
-                try:
-                    results = parse_osm_trails(overpass_query(bbox_query))
-                except Exception:
-                    pass
-            elif geo:
-                usgs_future = fetch_usgs_for_bbox(
-                    geo['lat'] - 0.15, geo['lon'] - 0.15,
-                    geo['lat'] + 0.15, geo['lon'] + 0.15, trail_type)
-                around_query = f'''[out:json][timeout:25];
-(
-  way{tp['ways']}["name"](around:15000,{geo['lat']},{geo['lon']});
-  relation{tp['rels']}["name"](around:15000,{geo['lat']},{geo['lon']});
-);
-out center tags 100;'''
-                try:
-                    results = parse_osm_trails(overpass_query(around_query))
-                except Exception:
-                    pass
-
-            try:
-                name_query = f'''[out:json][timeout:10];
-relation{tp['rels']}["name"~"{q}",i];
-out center tags 20;'''
-                name_results = parse_osm_trails(overpass_query(name_query))
-                seen_ids = {r['id'] for r in results}
-                for r in name_results:
-                    if r['id'] not in seen_ids:
-                        results.append(r)
-            except Exception:
-                pass
-
-            if usgs_future:
-                try:
-                    usgs_trails = usgs_future.result(timeout=3)
-                    results = merge_usgs_into_osm(results, usgs_trails)
-                except Exception:
-                    pass
-
-            response = {'trails': results[:100]}
-            if geo:
-                response['center'] = {'lat': geo['lat'], 'lon': geo['lon']}
-                if geo.get('bbox'):
-                    response['bbox'] = geo['bbox']
-            return jsonify(response)
         else:
             return jsonify([])
 
