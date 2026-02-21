@@ -244,12 +244,33 @@ def api_autocomplete():
     
     results = []
     
-    # 1. Query Nominatim for place suggestions (fast)
+    # 1. Query Nominatim for place suggestions — sorted by importance (popularity)
     try:
         r = http_session.get(NOMINATIM_URL, params={
-            'q': q, 'format': 'json', 'limit': 8, 'countrycodes': 'us'
+            'q': q, 'format': 'json', 'limit': 15, 'countrycodes': 'us',
+            'addressdetails': 1
         }, timeout=5)
-        for place in r.json():
+        places = r.json()
+        
+        # Sort by importance (higher = more popular/well-known) and prefer outdoor features
+        def place_score(p):
+            importance = float(p.get('importance', 0))
+            cls = p.get('class', '')
+            typ = p.get('type', '')
+            # Boost natural features, parks, and trails
+            if cls == 'natural' or typ in ('peak', 'mountain', 'lake', 'river', 'valley'):
+                importance += 0.3
+            elif cls == 'leisure' or 'park' in typ or 'forest' in typ:
+                importance += 0.2
+            elif cls == 'highway' and typ in ('path', 'footway', 'track'):
+                importance += 0.25
+            elif cls == 'boundary' and 'national' in p.get('display_name', '').lower():
+                importance += 0.2
+            return -importance  # negative for ascending sort
+        
+        places.sort(key=place_score)
+        
+        for place in places[:10]:
             display = place.get('display_name', '')
             parts = display.split(',')
             name = parts[0].strip()
