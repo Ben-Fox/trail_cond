@@ -1058,16 +1058,16 @@ body {
     font-size: 1rem;
     text-decoration: none;
     text-align: center;
-    background: white;
-    color: var(--green);
-    border: 2px solid white;
+    background: var(--brown-light);
+    color: white;
+    border: 2px solid var(--brown-light);
     cursor: pointer;
-    transition: background 0.2s, color 0.2s;
+    transition: background 0.2s, border-color 0.2s;
     box-sizing: border-box;
 }
 .btn-hero:hover {
-    background: transparent;
-    color: white;
+    background: var(--brown);
+    border-color: var(--brown);
 }
 .btn-note {
     font-family: 'Nunito', sans-serif;
