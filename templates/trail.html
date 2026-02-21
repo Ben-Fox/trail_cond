@@ -138,23 +138,17 @@ async function loadTrail() {
         html += `</div></div>`;
     }
     
-    // === ACTION CARDS (card-style, matching homepage aesthetic) ===
+    // === ACTION BUTTONS (matching homepage hero button style) ===
     const reportUrl = `/report?trail=${encodeURIComponent(trail.name)}&id=${OSM_TYPE}:${OSM_ID}`;
-    html += `<div class="trail-action-cards">
-        <a href="${reportUrl}" class="trail-action-card">
-            <div class="tac-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            </div>
-            <h3 class="tac-title">Submit Full Report</h3>
-            <p class="tac-desc">In-depth conditions report to help the community know what to expect</p>
-        </a>
-        <button class="trail-action-card" id="openQuickLogTrail">
-            <div class="tac-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/><path d="M9 17l3-3 3 3"/><line x1="12" y1="14" x2="12" y2="21"/></svg>
-            </div>
-            <h3 class="tac-title">Conditions Quick Log</h3>
-            <p class="tac-desc">Quickly flag conditions and hazards in a few taps</p>
-        </button>
+    html += `<div class="trail-action-buttons">
+        <div class="trail-btn-wrap">
+            <a href="${reportUrl}" class="btn-hero-trail">Submit Full Report</a>
+            <p class="btn-note-trail">In-depth report to help the community know what to expect</p>
+        </div>
+        <div class="trail-btn-wrap">
+            <button class="btn-hero-trail" id="openQuickLogTrail">Conditions Quick Log</button>
+            <p class="btn-note-trail">Quickly report conditions and hazards in a few taps</p>
+        </div>
     </div>`;
     
     // === CONDITIONS SECTION (TOP) — Two columns ===

@@ -437,61 +437,49 @@ body {
 
 /* Trail details grid */
 /* Trail detail page hero-style action cards */
-/* Trail detail action cards — matches homepage card aesthetic */
-.trail-action-cards {
+/* Trail detail action buttons — same style as homepage hero buttons */
+.trail-action-buttons {
     display: flex;
     gap: 16px;
     justify-content: center;
     flex-wrap: wrap;
     margin: 1.5rem 0;
 }
-.trail-action-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+.trail-btn-wrap {
     text-align: center;
-    width: 220px;
-    padding: 24px 20px;
-    background: var(--cream);
-    border: 2px solid var(--sand);
-    border-radius: 16px;
-    cursor: pointer;
-    text-decoration: none;
-    color: var(--text);
+    width: 240px;
+}
+.btn-hero-trail {
+    display: block;
+    width: 100%;
+    padding: 14px 24px;
+    border-radius: 12px;
     font-family: 'Nunito', sans-serif;
-    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    font-weight: 700;
+    font-size: 1rem;
+    text-decoration: none;
+    text-align: center;
+    background: var(--brown-light);
+    color: white;
+    border: 2px solid var(--brown-light);
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
     box-sizing: border-box;
 }
-.trail-action-card:hover {
-    border-color: var(--green-light);
-    box-shadow: 0 4px 16px rgba(45,106,79,0.12);
-    transform: translateY(-3px);
+.btn-hero-trail:hover {
+    background: var(--brown);
+    border-color: var(--brown);
 }
-.tac-icon {
-    width: 56px;
-    height: 56px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--sand);
-    border-radius: 50%;
-    margin-bottom: 12px;
-}
-.tac-title {
-    font-size: 1rem;
-    font-weight: 800;
-    color: var(--green);
-    margin: 0 0 6px;
-}
-.tac-desc {
-    font-size: 0.8rem;
+.btn-note-trail {
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.78rem;
     color: var(--text-light);
-    margin: 0;
-    line-height: 1.4;
+    margin: 8px 0 0;
+    line-height: 1.3;
 }
 @media (max-width: 600px) {
-    .trail-action-cards { flex-direction: column; align-items: center; }
-    .trail-action-card { width: 100%; max-width: 280px; }
+    .trail-action-buttons { flex-direction: column; align-items: center; }
+    .trail-btn-wrap { width: 100%; max-width: 280px; }
 }
 
 .trail-details-grid {
