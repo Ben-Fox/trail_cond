@@ -876,3 +876,162 @@ body {
 .filter-chip:hover:not(.active) {
     border-color: var(--green-light);
 }
+
+/* Quick Log FAB */
+.quick-log-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--green);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    cursor: pointer;
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s, background 0.2s;
+}
+.quick-log-fab:hover {
+    transform: scale(1.1);
+    background: var(--green-light);
+}
+
+/* Quick Log Overlay */
+.ql-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 6000;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+.ql-modal {
+    background: white;
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 500px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 1.5rem;
+    animation: slideUp 0.25s ease-out;
+}
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+@media (min-width: 600px) {
+    .ql-overlay { align-items: center; }
+    .ql-modal { border-radius: 20px; }
+}
+.ql-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+.ql-header h2 {
+    font-size: 1.2rem;
+    color: var(--green);
+    margin: 0;
+}
+.ql-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #999;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+.ql-prompt {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #555;
+    margin-bottom: 12px;
+}
+.ql-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.ql-option-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    border: 2px solid #eee;
+    border-radius: 12px;
+    background: white;
+    cursor: pointer;
+    font-family: 'Nunito', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--green);
+    transition: all 0.15s;
+}
+.ql-option-btn:hover {
+    border-color: var(--green-light);
+    background: var(--sand);
+}
+.ql-option-btn svg {
+    flex-shrink: 0;
+    stroke: var(--green);
+}
+.ql-use-location {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 16px;
+    border: 1px dashed #ccc;
+    border-radius: 10px;
+    background: none;
+    cursor: pointer;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.9rem;
+    color: var(--brown);
+    font-weight: 600;
+    width: 100%;
+}
+.ql-use-location:hover {
+    border-color: var(--green-light);
+    background: var(--sand);
+}
+.ql-notes {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.9rem;
+    resize: vertical;
+    min-height: 60px;
+    margin-top: 1rem;
+    outline: none;
+    box-sizing: border-box;
+}
+.ql-notes:focus {
+    border-color: var(--green-light);
+}
+.ql-submit {
+    margin-top: 1rem;
+}
+.ql-road-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    outline: none;
+    box-sizing: border-box;
+}
+.ql-road-input:focus {
+    border-color: var(--green-light);
+}

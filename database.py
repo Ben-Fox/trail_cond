@@ -52,8 +52,24 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(report_id, ip_hash)
         );
+        CREATE TABLE IF NOT EXISTS quick_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            log_type TEXT NOT NULL,
+            facility_id TEXT,
+            trail_name TEXT,
+            lat REAL,
+            lon REAL,
+            category TEXT NOT NULL,
+            detail TEXT,
+            notes TEXT,
+            upvotes INTEGER DEFAULT 0,
+            downvotes INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE INDEX IF NOT EXISTS idx_reports_facility ON reports(facility_id);
         CREATE INDEX IF NOT EXISTS idx_votes_report ON votes(report_id);
+        CREATE INDEX IF NOT EXISTS idx_quicklogs_facility ON quick_logs(facility_id);
+        CREATE INDEX IF NOT EXISTS idx_quicklogs_location ON quick_logs(lat, lon);
     ''')
     # Add new columns if they don't exist (migration)
     try:

@@ -31,6 +31,355 @@
         </div>
     </nav>
     <main>{% block content %}{% endblock %}</main>
+    <!-- Quick Log FAB -->
+    <button class="quick-log-fab" id="quickLogFab" title="Quick Log">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    
+    <!-- Quick Log Modal -->
+    <div class="ql-overlay" id="qlOverlay" style="display:none;">
+        <div class="ql-modal">
+            <div class="ql-header">
+                <h2 id="qlTitle">Quick Log</h2>
+                <button class="ql-close" id="qlClose">&times;</button>
+            </div>
+            
+            <!-- Step 1: Choose type -->
+            <div class="ql-step" id="qlStep1">
+                <p class="ql-prompt">What do you want to report?</p>
+                <div class="ql-options">
+                    <button class="ql-option-btn" data-type="trail_condition">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l4-8 4 6 4-10 6 12"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+                        <span>Trail Condition</span>
+                    </button>
+                    <button class="ql-option-btn" data-type="spot_hazard">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <span>Spot Hazard</span>
+                    </button>
+                    <button class="ql-option-btn" data-type="road_condition">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20L8 4"/><path d="M16 4l4 16"/><line x1="10" y1="8" x2="14" y2="8" stroke-dasharray="2"/><line x1="10.5" y1="14" x2="13.5" y2="14" stroke-dasharray="2"/></svg>
+                        <span>Road Condition</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 2: Select Trail (for trail_condition and spot_hazard) -->
+            <div class="ql-step" id="qlStep2" style="display:none;">
+                <p class="ql-prompt">Which trail?</p>
+                <div class="trail-search-wrap">
+                    <input type="text" id="qlTrailSearch" placeholder="Search trail name..." autocomplete="off">
+                    <div class="trail-suggestions" id="qlTrailSuggestions"></div>
+                </div>
+                <div id="qlSelectedTrail" style="display:none;">
+                    <div class="selected-trail">
+                        <span class="st-name" id="qlStName"></span>
+                        <span class="st-change" id="qlStChange">Change</span>
+                    </div>
+                </div>
+                <button class="ql-use-location" id="qlUseLocation">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 0110 10 10 10 0 01-10 10A10 10 0 012 12 10 10 0 0112 2z" opacity=".3"/></svg>
+                    Use My Current Location
+                </button>
+            </div>
+            
+            <!-- Step 3: Trail Condition Quick Chips -->
+            <div class="ql-step" id="qlStep3Condition" style="display:none;">
+                <p class="ql-prompt">How's the trail?</p>
+                <div class="chip-group" data-field="ql_condition">
+                    <span class="chip" data-value="dry">Dry</span>
+                    <span class="chip" data-value="wet">Wet</span>
+                    <span class="chip" data-value="muddy">Muddy</span>
+                    <span class="chip" data-value="snowy">Snowy</span>
+                    <span class="chip" data-value="icy">Icy</span>
+                    <span class="chip" data-value="flooded">Flooded</span>
+                    <span class="chip" data-value="overgrown">Overgrown</span>
+                    <span class="chip" data-value="excellent">Excellent</span>
+                </div>
+                <p class="ql-prompt" style="margin-top:1rem;">Overall?</p>
+                <div class="chip-group" data-field="ql_rating">
+                    <span class="chip" data-value="good">Good</span>
+                    <span class="chip" data-value="fair">Fair</span>
+                    <span class="chip" data-value="poor">Poor</span>
+                    <span class="chip" data-value="closed">Closed</span>
+                </div>
+                <textarea id="qlConditionNotes" class="ql-notes" placeholder="Quick note (optional)..."></textarea>
+                <button class="btn-submit ql-submit" id="qlSubmitCondition">Submit</button>
+            </div>
+            
+            <!-- Step 3: Spot Hazard -->
+            <div class="ql-step" id="qlStep3Hazard" style="display:none;">
+                <p class="ql-prompt">What's the hazard?</p>
+                <div class="chip-group multi" data-field="ql_hazard">
+                    <span class="chip" data-value="ice">Ice</span>
+                    <span class="chip" data-value="fallen_tree">Fallen Tree</span>
+                    <span class="chip" data-value="rockslide">Rockslide</span>
+                    <span class="chip" data-value="washout">Washout</span>
+                    <span class="chip" data-value="flooding">Flooding</span>
+                    <span class="chip" data-value="wildlife">Wildlife</span>
+                    <span class="chip" data-value="damaged_bridge">Damaged Bridge</span>
+                    <span class="chip" data-value="missing_markers">Missing Markers</span>
+                    <span class="chip" data-value="steep_dropoff">Steep Drop-off</span>
+                    <span class="chip" data-value="poison_plants">Poison Ivy/Oak</span>
+                    <span class="chip" data-value="bees_wasps">Bees/Wasps</span>
+                    <span class="chip" data-value="other">Other</span>
+                </div>
+                <textarea id="qlHazardNotes" class="ql-notes" placeholder="Details (optional)..."></textarea>
+                <button class="btn-submit ql-submit" id="qlSubmitHazard">Submit</button>
+            </div>
+            
+            <!-- Step 3: Road Condition -->
+            <div class="ql-step" id="qlStep3Road" style="display:none;">
+                <p class="ql-prompt">Which road or access point?</p>
+                <input type="text" id="qlRoadName" class="ql-road-input" placeholder="Road name (e.g. FR 123, Trailhead parking)...">
+                <p class="ql-prompt" style="margin-top:1rem;">Road surface?</p>
+                <div class="chip-group" data-field="ql_road_surface">
+                    <span class="chip" data-value="paved">Paved</span>
+                    <span class="chip" data-value="gravel">Gravel</span>
+                    <span class="chip" data-value="dirt">Dirt</span>
+                    <span class="chip" data-value="4wd">4WD Only</span>
+                </div>
+                <p class="ql-prompt" style="margin-top:1rem;">Road issues?</p>
+                <div class="chip-group multi" data-field="ql_road_issues">
+                    <span class="chip" data-value="potholes">Potholes</span>
+                    <span class="chip" data-value="snow">Snow</span>
+                    <span class="chip" data-value="ice">Ice</span>
+                    <span class="chip" data-value="mud">Mud</span>
+                    <span class="chip" data-value="ruts">Ruts</span>
+                    <span class="chip" data-value="washboard">Washboard</span>
+                    <span class="chip" data-value="flooded">Flooded</span>
+                    <span class="chip" data-value="closed">Road Closed</span>
+                    <span class="chip" data-value="construction">Construction</span>
+                    <span class="chip" data-value="no_issues">No Issues</span>
+                </div>
+                <textarea id="qlRoadNotes" class="ql-notes" placeholder="Details (optional)..."></textarea>
+                <button class="btn-submit ql-submit" id="qlSubmitRoad">Submit</button>
+            </div>
+            
+            <!-- Success -->
+            <div class="ql-step" id="qlSuccess" style="display:none;">
+                <div style="text-align:center; padding:2rem 0;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <h3 style="color:var(--green); margin-top:1rem;">Logged!</h3>
+                    <p style="color:#777;">Thanks for helping the community.</p>
+                    <button class="btn btn-primary" id="qlLogAnother" style="margin-top:1rem;">Log Another</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+    // Quick Log Modal Logic
+    (function() {
+        const fab = document.getElementById('quickLogFab');
+        const overlay = document.getElementById('qlOverlay');
+        const closeBtn = document.getElementById('qlClose');
+        let qlType = '';
+        let qlTrail = null;
+        let qlLocation = null;
+        
+        function showStep(id) {
+            document.querySelectorAll('.ql-step').forEach(s => s.style.display = 'none');
+            document.getElementById(id).style.display = 'block';
+        }
+        
+        function resetModal() {
+            qlType = ''; qlTrail = null; qlLocation = null;
+            showStep('qlStep1');
+            document.querySelectorAll('.ql-modal .chip.selected').forEach(c => c.classList.remove('selected'));
+            document.querySelectorAll('.ql-modal textarea').forEach(t => t.value = '');
+            document.getElementById('qlTrailSearch').value = '';
+            document.getElementById('qlSelectedTrail').style.display = 'none';
+            document.getElementById('qlTrailSearch').style.display = 'block';
+            document.getElementById('qlRoadName').value = '';
+            document.getElementById('qlTitle').textContent = 'Quick Log';
+        }
+        
+        fab.addEventListener('click', () => { resetModal(); overlay.style.display = 'flex'; });
+        closeBtn.addEventListener('click', () => { overlay.style.display = 'none'; });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.style.display = 'none'; });
+        
+        // Step 1: Choose type
+        document.querySelectorAll('.ql-option-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                qlType = this.dataset.type;
+                if (qlType === 'road_condition') {
+                    document.getElementById('qlTitle').textContent = 'Road Condition';
+                    showStep('qlStep3Road');
+                    // Try to get location
+                    navigator.geolocation?.getCurrentPosition(pos => {
+                        qlLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
+                    });
+                } else {
+                    document.getElementById('qlTitle').textContent = qlType === 'trail_condition' ? 'Trail Condition' : 'Spot Hazard';
+                    showStep('qlStep2');
+                }
+            });
+        });
+        
+        // Step 2: Trail search
+        let qlTimer = null;
+        const qlSearch = document.getElementById('qlTrailSearch');
+        const qlSuggestions = document.getElementById('qlTrailSuggestions');
+        
+        qlSearch.addEventListener('input', function() {
+            clearTimeout(qlTimer);
+            const q = this.value.trim();
+            if (q.length < 2) { qlSuggestions.style.display = 'none'; return; }
+            qlTimer = setTimeout(async () => {
+                try {
+                    const res = await fetch(`/api/autocomplete?q=${encodeURIComponent(q)}`);
+                    const data = await res.json();
+                    if (!data.length) { qlSuggestions.style.display = 'none'; return; }
+                    qlSuggestions.innerHTML = data.slice(0, 8).map(item => `
+                        <div class="suggestion" data-osm-type="${item.osm_type||''}" data-osm-id="${item.osm_id||''}" data-name="${item.name}" data-lat="${item.lat||''}" data-lon="${item.lon||''}">
+                            <div class="sug-name">${item.name}</div>
+                            <div class="sug-ctx">${item.context||''}</div>
+                        </div>
+                    `).join('');
+                    qlSuggestions.style.display = 'block';
+                    qlSuggestions.querySelectorAll('.suggestion').forEach(el => {
+                        el.addEventListener('click', function() {
+                            selectQlTrail({
+                                osm_type: this.dataset.osmType,
+                                osm_id: this.dataset.osmId,
+                                name: this.dataset.name,
+                                lat: parseFloat(this.dataset.lat) || null,
+                                lon: parseFloat(this.dataset.lon) || null,
+                            });
+                        });
+                    });
+                } catch(e) {}
+            }, 200);
+        });
+        
+        function selectQlTrail(trail) {
+            qlTrail = trail;
+            qlLocation = trail.lat && trail.lon ? {lat: trail.lat, lon: trail.lon} : null;
+            qlSuggestions.style.display = 'none';
+            qlSearch.style.display = 'none';
+            document.getElementById('qlSelectedTrail').style.display = 'block';
+            document.getElementById('qlStName').textContent = trail.name;
+            // Go to step 3
+            if (qlType === 'trail_condition') showStep('qlStep3Condition');
+            else showStep('qlStep3Hazard');
+        }
+        
+        document.getElementById('qlStChange').addEventListener('click', () => {
+            qlTrail = null;
+            qlSearch.style.display = 'block';
+            qlSearch.value = '';
+            document.getElementById('qlSelectedTrail').style.display = 'none';
+        });
+        
+        // Use current location
+        document.getElementById('qlUseLocation').addEventListener('click', function() {
+            this.textContent = 'Getting location...';
+            navigator.geolocation.getCurrentPosition(pos => {
+                qlLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
+                qlTrail = {name: 'Current Location', osm_type: null, osm_id: null};
+                document.getElementById('qlSelectedTrail').style.display = 'block';
+                document.getElementById('qlStName').textContent = `Current Location (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`;
+                qlSearch.style.display = 'none';
+                if (qlType === 'trail_condition') showStep('qlStep3Condition');
+                else showStep('qlStep3Hazard');
+                this.textContent = 'Use My Current Location';
+            }, () => {
+                this.textContent = 'Location unavailable — search instead';
+            });
+        });
+        
+        // Chip selection in modal
+        document.querySelectorAll('.ql-modal .chip-group').forEach(group => {
+            const multi = group.classList.contains('multi');
+            group.querySelectorAll('.chip').forEach(chip => {
+                chip.addEventListener('click', function() {
+                    if (multi) {
+                        if (this.dataset.value === 'no_issues') {
+                            group.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+                        } else {
+                            group.querySelector('.chip[data-value="no_issues"]')?.classList.remove('selected');
+                        }
+                        this.classList.toggle('selected');
+                    } else {
+                        group.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+                        this.classList.add('selected');
+                    }
+                });
+            });
+        });
+        
+        function getModalChips(field) {
+            const group = document.querySelector(`.ql-modal .chip-group[data-field="${field}"]`);
+            if (!group) return '';
+            return Array.from(group.querySelectorAll('.chip.selected')).map(c => c.dataset.value).join(',');
+        }
+        
+        async function submitQuickLog(payload) {
+            try {
+                const res = await fetch('/api/quicklog', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+                if (data.ok) showStep('qlSuccess');
+                else alert('Error submitting. Try again.');
+            } catch(e) { alert('Error submitting. Try again.'); }
+        }
+        
+        // Submit trail condition
+        document.getElementById('qlSubmitCondition').addEventListener('click', () => {
+            const condition = getModalChips('ql_condition');
+            const rating = getModalChips('ql_rating');
+            if (!condition && !rating) return alert('Please select at least one option');
+            submitQuickLog({
+                log_type: 'trail_condition',
+                facility_id: qlTrail?.osm_type && qlTrail?.osm_id ? `${qlTrail.osm_type}:${qlTrail.osm_id}` : null,
+                trail_name: qlTrail?.name,
+                lat: qlLocation?.lat,
+                lon: qlLocation?.lon,
+                category: condition || rating,
+                detail: rating ? `overall:${rating}` : '',
+                notes: document.getElementById('qlConditionNotes').value.trim(),
+            });
+        });
+        
+        // Submit hazard
+        document.getElementById('qlSubmitHazard').addEventListener('click', () => {
+            const hazards = getModalChips('ql_hazard');
+            if (!hazards) return alert('Please select at least one hazard');
+            submitQuickLog({
+                log_type: 'spot_hazard',
+                facility_id: qlTrail?.osm_type && qlTrail?.osm_id ? `${qlTrail.osm_type}:${qlTrail.osm_id}` : null,
+                trail_name: qlTrail?.name,
+                lat: qlLocation?.lat,
+                lon: qlLocation?.lon,
+                category: hazards,
+                notes: document.getElementById('qlHazardNotes').value.trim(),
+            });
+        });
+        
+        // Submit road
+        document.getElementById('qlSubmitRoad').addEventListener('click', () => {
+            const surface = getModalChips('ql_road_surface');
+            const issues = getModalChips('ql_road_issues');
+            if (!surface && !issues) return alert('Please select at least one option');
+            submitQuickLog({
+                log_type: 'road_condition',
+                trail_name: document.getElementById('qlRoadName').value.trim() || 'Unknown Road',
+                lat: qlLocation?.lat,
+                lon: qlLocation?.lon,
+                category: issues || surface,
+                detail: surface ? `surface:${surface}` : '',
+                notes: document.getElementById('qlRoadNotes').value.trim(),
+            });
+        });
+        
+        // Log another
+        document.getElementById('qlLogAnother').addEventListener('click', resetModal);
+    })();
+    </script>
+    
     <footer class="site-footer">
         <p>Data from Recreation.gov, Open-Meteo &amp; OpenStreetMap/Waymarked Trails</p>
     </footer>

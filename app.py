@@ -881,6 +881,50 @@ def vote_report(report_id):
         return jsonify({'error': str(e)}), 500
     return jsonify({'ok': True})
 
+@app.route('/api/quicklog', methods=['POST'])
+def add_quicklog():
+    data = request.json
+    db = get_db()
+    db.execute('''INSERT INTO quick_logs (log_type, facility_id, trail_name, lat, lon, category, detail, notes)
+                  VALUES (?,?,?,?,?,?,?,?)''',
+               (data.get('log_type'), data.get('facility_id'), data.get('trail_name'),
+                data.get('lat'), data.get('lon'), data.get('category'),
+                data.get('detail'), data.get('notes')))
+    db.commit()
+    return jsonify({'ok': True})
+
+@app.route('/api/quicklogs/<path:facility_id>')
+def get_quicklogs(facility_id):
+    db = get_db()
+    logs = db.execute('SELECT * FROM quick_logs WHERE facility_id=? ORDER BY created_at DESC LIMIT 50', (facility_id,)).fetchall()
+    return jsonify([dict(r) for r in logs])
+
+@app.route('/api/quicklogs/nearby')
+def get_nearby_quicklogs():
+    lat = request.args.get('lat', type=float)
+    lon = request.args.get('lon', type=float)
+    radius = request.args.get('radius', 0.1, type=float)  # ~11km default
+    if lat is None or lon is None:
+        return jsonify({'error': 'lat/lon required'}), 400
+    db = get_db()
+    logs = db.execute('''SELECT * FROM quick_logs 
+                         WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+                         ORDER BY created_at DESC LIMIT 100''',
+                      (lat - radius, lat + radius, lon - radius, lon + radius)).fetchall()
+    return jsonify([dict(r) for r in logs])
+
+@app.route('/api/quicklogs/<int:log_id>/vote', methods=['POST'])
+def vote_quicklog(log_id):
+    data = request.json
+    vote_type = data.get('vote_type', 'up')
+    db = get_db()
+    if vote_type == 'up':
+        db.execute('UPDATE quick_logs SET upvotes=upvotes+1 WHERE id=?', (log_id,))
+    else:
+        db.execute('UPDATE quick_logs SET downvotes=downvotes+1 WHERE id=?', (log_id,))
+    db.commit()
+    return jsonify({'ok': True})
+
 # Initialize DB on import (works with both gunicorn and direct run)
 init_db()
 
