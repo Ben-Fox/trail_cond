@@ -163,6 +163,15 @@ async function loadTrail() {
         <p class="muted">Loading weather data...</p>
     </div>`;
     
+    // Middle: Air Quality
+    html += `<div class="condition-panel" id="airQualityPanel">
+        <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2c3 0 5 2 8 2s4-1 4-1v11s-1 1-4 1-5-2-8-2-4 1-4 1V2s1-1 4-1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            Air Quality
+        </h2>
+        <p class="muted">Loading air quality...</p>
+    </div>`;
+    
     // Right: Community-based conditions
     html += `<div class="condition-panel" id="communityConditions">
         <h2>
@@ -299,12 +308,13 @@ async function loadTrail() {
         });
     }
     
-    // Load elevation + weather in parallel (don't let one block the other)
+    // Load elevation + weather + air quality in parallel (don't let one block the other)
     const elevationPromise = loadElevation(trail, trailMap);
     const weatherPromise = loadWeather(trail, trailConditionPin);
+    const aqPromise = loadAirQuality(trail);
     
-    // Await both (each handles its own errors)
-    await Promise.all([elevationPromise, weatherPromise]);
+    // Await all (each handles its own errors)
+    await Promise.all([elevationPromise, weatherPromise, aqPromise]);
     
     // Report form handler
     document.getElementById('reportForm').addEventListener('submit', async function(e) {
@@ -483,6 +493,43 @@ async function loadElevation(trail, trailMap) {
         console.error('Elevation load error:', e);
         const elevSec = document.getElementById('elevationSection');
         if (elevSec) elevSec.innerHTML = '<h2>Elevation Profile</h2><p class="muted">Could not load elevation data</p>';
+    }
+}
+
+async function loadAirQuality(trail) {
+    if (!trail.lat || !trail.lon) return;
+    const panel = document.getElementById('airQualityPanel');
+    try {
+        const res = await fetch(`/api/airquality?lat=${trail.lat.toFixed(4)}&lon=${trail.lon.toFixed(4)}`);
+        const aq = await res.json();
+        if (aq.error) {
+            panel.querySelector('.muted').textContent = 'Air quality data unavailable';
+            return;
+        }
+        const aqi = aq.us_aqi || 0;
+        const label = aq.label || 'Unknown';
+        let color = '#009c4c';
+        if (aqi > 300) color = '#7e0023';
+        else if (aqi > 200) color = '#660099';
+        else if (aqi > 150) color = '#cc0033';
+        else if (aqi > 100) color = '#ff7e00';
+        else if (aqi > 50) color = '#ffde33';
+        
+        let html = `<div class="condition-badge" style="background:${color}">${label.toUpperCase()}</div>`;
+        html += `<div class="aqi-value" style="color:${color};font-size:2em;font-weight:800;margin:0.5rem 0;">AQI ${aqi}</div>`;
+        html += `<div class="aqi-details">`;
+        if (aq.pm2_5 != null) html += `<p class="reason">PM2.5: ${aq.pm2_5.toFixed(1)} µg/m³</p>`;
+        if (aq.pm10 != null) html += `<p class="reason">PM10: ${aq.pm10.toFixed(1)} µg/m³</p>`;
+        if (aq.ozone != null) html += `<p class="reason">Ozone: ${aq.ozone.toFixed(1)} µg/m³</p>`;
+        if (aq.no2 != null) html += `<p class="reason">NO₂: ${aq.no2.toFixed(1)} µg/m³</p>`;
+        html += `</div>`;
+        
+        panel.innerHTML = `<h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2c3 0 5 2 8 2s4-1 4-1v11s-1 1-4 1-5-2-8-2-4 1-4 1V2s1-1 4-1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            Air Quality</h2>${html}`;
+    } catch(e) {
+        console.error('AQ load error:', e);
+        panel.querySelector('.muted').textContent = 'Could not load air quality';
     }
 }
 

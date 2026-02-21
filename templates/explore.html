@@ -52,12 +52,20 @@
             </label>
             <label class="map-toggle"><input type="checkbox" id="conditionsOverlayToggle"> Projected Trail Conditions</label>
             <label class="map-toggle"><input type="checkbox" id="trailOverlayToggle"> Trail Routes</label>
+            <label class="map-toggle"><input type="checkbox" id="aqOverlayToggle"> Air Quality</label>
             <div id="conditionsLegend" class="conditions-legend" style="display:none;">
                 <span class="legend-item"><span class="legend-swatch" style="background:rgba(45,106,79,0.3)"></span>Dry</span>
                 <span class="legend-item"><span class="legend-swatch" style="background:rgba(176,137,104,0.5)"></span>Wet</span>
                 <span class="legend-item"><span class="legend-swatch" style="background:rgba(127,85,57,0.6)"></span>Muddy</span>
                 <span class="legend-item"><span class="legend-swatch" style="background:rgba(74,144,217,0.6)"></span>Snowy</span>
                 <span class="legend-item"><span class="legend-swatch" style="background:rgba(196,69,54,0.6)"></span>Icy</span>
+            </div>
+            <div id="aqLegend" class="conditions-legend" style="display:none;">
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(0,153,76,0.6)"></span>Good</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(255,222,51,0.6)"></span>Moderate</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(255,126,0,0.7)"></span>USG</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(204,0,51,0.7)"></span>Unhealthy</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:rgba(102,0,153,0.7)"></span>Very Unhealthy</span>
             </div>
         </div>
         <div id="mapView" class="map-view">
@@ -316,6 +324,72 @@ function initMap() {
         } catch(err) {}
     });
     
+    // === Air Quality Overlay — same tile approach as conditions ===
+    let aqActive = false;
+    let aqTileLayer = null;
+    const AQ_LABELS = {0:'Good',51:'Moderate',101:'Unhealthy for Sensitive Groups',151:'Unhealthy',201:'Very Unhealthy',301:'Hazardous'};
+    
+    function aqLabel(aqi) {
+        if (aqi <= 50) return 'Good';
+        if (aqi <= 100) return 'Moderate';
+        if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+        if (aqi <= 200) return 'Unhealthy';
+        if (aqi <= 300) return 'Very Unhealthy';
+        return 'Hazardous';
+    }
+    
+    function aqColor(aqi) {
+        if (aqi <= 50) return '#009c4c';
+        if (aqi <= 100) return '#ffde33';
+        if (aqi <= 150) return '#ff7e00';
+        if (aqi <= 200) return '#cc0033';
+        if (aqi <= 300) return '#660099';
+        return '#7e0023';
+    }
+    
+    document.getElementById('aqOverlayToggle').addEventListener('change', function() {
+        aqActive = this.checked;
+        document.getElementById('aqLegend').style.display = this.checked ? 'flex' : 'none';
+        if (this.checked) {
+            if (!aqTileLayer) {
+                aqTileLayer = L.tileLayer('/api/tiles/airquality/{z}/{x}/{y}.png', {
+                    opacity: 0.6,
+                    maxZoom: 14,
+                    minZoom: 5,
+                    attribution: 'AQI: Open-Meteo',
+                    errorTileUrl: '',
+                });
+            }
+            aqTileLayer.addTo(map);
+        } else {
+            if (aqTileLayer && map.hasLayer(aqTileLayer)) {
+                map.removeLayer(aqTileLayer);
+            }
+        }
+    });
+    
+    // Click to inspect AQI at a point
+    map.on('click', async function(e) {
+        if (!aqActive) return;
+        const lat = e.latlng.lat.toFixed(2), lon = e.latlng.lng.toFixed(2);
+        try {
+            const res = await fetch(`/api/airquality?lat=${lat}&lon=${lon}`);
+            const aq = await res.json();
+            if (aq.error) return;
+            const aqi = aq.us_aqi || 0;
+            const label = aq.label || aqLabel(aqi);
+            const color = aqColor(aqi);
+            const parts = [];
+            if (aq.pm2_5 != null) parts.push(`PM2.5: ${aq.pm2_5.toFixed(1)} µg/m³`);
+            if (aq.pm10 != null) parts.push(`PM10: ${aq.pm10.toFixed(1)} µg/m³`);
+            if (aq.ozone != null) parts.push(`O₃: ${aq.ozone.toFixed(1)} µg/m³`);
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent(`<strong style="font-size:1.1em;color:${color}">AQI ${aqi} — ${label}</strong><br><small style="color:#555">${parts.join('<br>')}</small>`)
+                .openOn(map);
+        } catch(err) {}
+    });
+
     document.getElementById('trailOverlayToggle').addEventListener('change', function() {
         if (this.checked) trailsOverlay.addTo(map);
         else if (map.hasLayer(trailsOverlay)) map.removeLayer(trailsOverlay);
