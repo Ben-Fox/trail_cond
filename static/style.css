@@ -1046,12 +1046,33 @@ body {
 }
 .hero-btn-wrap {
     text-align: center;
+    width: 220px;
+}
+.btn-hero {
+    display: block;
+    width: 100%;
+    padding: 14px 24px;
+    border-radius: 12px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    text-decoration: none;
+    text-align: center;
+    background: white;
+    color: var(--green);
+    border: 2px solid white;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    box-sizing: border-box;
+}
+.btn-hero:hover {
+    background: transparent;
+    color: white;
 }
 .btn-note {
     font-family: 'Nunito', sans-serif;
     font-size: 0.78rem;
     color: rgba(255,255,255,0.7);
-    margin: 6px 0 0;
-    max-width: 220px;
+    margin: 8px 0 0;
     line-height: 1.3;
 }
