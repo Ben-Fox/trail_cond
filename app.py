@@ -163,42 +163,75 @@ def overpass_query(query):
     raise last_err or Exception('All Overpass servers failed')
 
 def parse_osm_trails(data):
-    """Parse Overpass response into trail list."""
-    results = []
-    seen = set()
+    """Parse Overpass response into trail list, merging same-name way segments."""
+    relations = []
+    way_groups = {}  # name -> list of way elements
+    seen_rel = set()
+    
     for el in data.get('elements', []):
-        osm_type = el.get('type')  # way or relation
+        osm_type = el.get('type')
         osm_id = el.get('id')
         tags = el.get('tags', {})
         name = tags.get('name', '')
         if not name:
             continue
-        key = f"{osm_type}:{osm_id}"
-        if key in seen:
+        
+        if osm_type == 'relation':
+            key = f"relation:{osm_id}"
+            if key not in seen_rel:
+                seen_rel.add(key)
+                lat = lon = None
+                if 'center' in el:
+                    lat, lon = el['center'].get('lat'), el['center'].get('lon')
+                relations.append({
+                    'id': key, 'osm_type': 'relation', 'osm_id': osm_id,
+                    'name': name, 'lat': lat, 'lon': lon,
+                    'difficulty': tags.get('sac_scale', ''),
+                    'surface': tags.get('surface', ''),
+                    'distance': tags.get('distance', ''),
+                    'desc': (tags.get('description') or tags.get('note', ''))[:200],
+                })
+        elif osm_type == 'way':
+            norm = name.strip().lower()
+            if norm not in way_groups:
+                way_groups[norm] = {'name': name, 'ways': [], 'tags': tags}
+            way_el = {'id': osm_id}
+            if 'center' in el:
+                way_el['lat'] = el['center'].get('lat')
+                way_el['lon'] = el['center'].get('lon')
+            way_groups[norm]['ways'].append(way_el)
+    
+    # Names already covered by relations — skip those way groups
+    rel_names = {r['name'].strip().lower() for r in relations}
+    
+    results = list(relations)
+    for norm, grp in way_groups.items():
+        if norm in rel_names:
             continue
-        seen.add(key)
+        ways = grp['ways']
+        tags = grp['tags']
+        # Use first way as representative; store all way IDs for detail page
+        rep = ways[0]
+        way_ids = [w['id'] for w in ways]
+        # Average center across all segments
+        lats = [w['lat'] for w in ways if w.get('lat')]
+        lons = [w['lon'] for w in ways if w.get('lon')]
+        lat = sum(lats) / len(lats) if lats else None
+        lon = sum(lons) / len(lons) if lons else None
         
-        # Get center coords
-        lat = lon = None
-        if 'center' in el:
-            lat = el['center'].get('lat')
-            lon = el['center'].get('lon')
-        elif 'lat' in el:
-            lat = el.get('lat')
-            lon = el.get('lon')
-        
-        results.append({
-            'id': f"{osm_type}:{osm_id}",
-            'osm_type': osm_type,
-            'osm_id': osm_id,
-            'name': name,
-            'lat': lat,
-            'lon': lon,
+        entry = {
+            'id': f"way:{rep['id']}",
+            'osm_type': 'way', 'osm_id': rep['id'],
+            'name': grp['name'], 'lat': lat, 'lon': lon,
             'difficulty': tags.get('sac_scale', ''),
             'surface': tags.get('surface', ''),
             'distance': tags.get('distance', ''),
-            'desc': tags.get('description', tags.get('note', ''))[:200] if tags.get('description') or tags.get('note') else '',
-        })
+            'desc': (tags.get('description') or tags.get('note', ''))[:200],
+        }
+        if len(way_ids) > 1:
+            entry['way_ids'] = way_ids  # all segment IDs for full geometry fetch
+        results.append(entry)
+    
     return results
 
 # --- Pages ---
@@ -485,28 +518,44 @@ def api_trail(osm_type, osm_id):
     if osm_type not in ('way', 'relation'):
         return jsonify({'error': 'Invalid type'}), 400
     
+    # For ways, check if we should fetch all same-name segments
+    extra_way_ids = request.args.get('way_ids', '')
+    
     # Check cache first
-    cache_key = f"trail:{osm_type}:{osm_id}"
+    cache_key = f"trail:{osm_type}:{osm_id}:{extra_way_ids}"
     cached = cached_response(cache_key, ttl=CACHE_TTL)
     if cached:
         return jsonify(cached)
     
     try:
-        query = f'''[out:json][timeout:25];
+        # If way_ids provided, fetch all segments at once
+        if osm_type == 'way' and extra_way_ids:
+            all_ids = [str(osm_id)] + [i.strip() for i in extra_way_ids.split(',') if i.strip()]
+            all_ids = list(dict.fromkeys(all_ids))  # dedupe preserving order
+            id_union = ''.join(f'way({wid});' for wid in all_ids)
+            query = f'''[out:json][timeout:25];
+({id_union});\nout geom tags;'''
+        else:
+            query = f'''[out:json][timeout:25];
 {osm_type}({osm_id});
 out geom tags;'''
+        
         data = overpass_query(query)
         elements = data.get('elements', [])
         if not elements:
+            # For single-way fallback, also try finding same-name siblings
             return jsonify({'error': 'Trail not found'}), 404
         
         el = elements[0]
         tags = el.get('tags', {})
         
-        # Extract geometry
+        # Extract geometry (combine all elements for multi-way)
         geometry = []
-        if osm_type == 'way' and 'geometry' in el:
-            geometry = [{'lat': p['lat'], 'lon': p['lon']} for p in el['geometry']]
+        if osm_type == 'way':
+            for seg in elements:
+                if 'geometry' in seg:
+                    seg_pts = [{'lat': p['lat'], 'lon': p['lon']} for p in seg['geometry']]
+                    geometry.extend(seg_pts)
         elif osm_type == 'relation' and 'members' in el:
             for member in el.get('members', []):
                 if member.get('type') == 'way' and 'geometry' in member:

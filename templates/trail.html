@@ -33,8 +33,12 @@ function difficultyLabel(sac) {
 }
 
 async function loadTrail() {
+    // Pass way_ids from URL params if present (merged trail segments)
+    const urlParams = new URLSearchParams(window.location.search);
+    const wayIds = urlParams.get('way_ids') || '';
+    const trailApiUrl = wayIds ? `/api/trail/${FID}?way_ids=${wayIds}` : `/api/trail/${FID}`;
     const [trailRes, reportsRes] = await Promise.all([
-        fetch(`/api/trail/${FID}`),
+        fetch(trailApiUrl),
         fetch(`/api/trail/${REPORT_KEY}/reports`)
     ]);
     const trail = await trailRes.json();

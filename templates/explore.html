@@ -502,7 +502,11 @@ async function loadTrailRoute(trail) {
     }
     
     try {
-        const res = await fetch(`/api/trail/${trail.osm_type}/${trail.osm_id}`);
+        let trailApiUrl = `/api/trail/${trail.osm_type}/${trail.osm_id}`;
+        if (trail.way_ids && trail.way_ids.length > 1) {
+            trailApiUrl += `?way_ids=${trail.way_ids.join(',')}`;
+        }
+        const res = await fetch(trailApiUrl);
         const data = await res.json();
         if (!data.geometry || data.geometry.length < 2) return;
         
@@ -538,7 +542,10 @@ async function loadTrailRoute(trail) {
         }
         
         // Update popup
-        const trailUrl = `/trail/${trail.osm_type}/${trail.osm_id}`;
+        let trailUrl = `/trail/${trail.osm_type}/${trail.osm_id}`;
+        if (trail.way_ids && trail.way_ids.length > 1) {
+            trailUrl += `?way_ids=${trail.way_ids.join(',')}`;
+        }
         const diff = difficultyLabel(trail.difficulty);
         const dist = data.distance_km ? `${data.distance_km} km` : '';
         L.popup()
@@ -562,7 +569,8 @@ function renderResults(trails, skipFitBounds) {
     let html = '';
     trails.forEach(t => {
         const diff = difficultyLabel(t.difficulty);
-        const trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+        let trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+        if (t.way_ids && t.way_ids.length > 1) trailUrl += `?way_ids=${t.way_ids.join(',')}`;
         
         html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
             <h3 class="tc-name">${t.name}</h3>
@@ -600,7 +608,9 @@ async function loadRoutes(trails) {
     const toLoad = trails.filter(t => t.lat && t.lon).slice(0, 30);
     for (const t of toLoad) {
         try {
-            const res = await fetch(`/api/trail/${t.osm_type}/${t.osm_id}`);
+            let routeUrl = `/api/trail/${t.osm_type}/${t.osm_id}`;
+            if (t.way_ids && t.way_ids.length > 1) routeUrl += `?way_ids=${t.way_ids.join(',')}`;
+            const res = await fetch(routeUrl);
             const data = await res.json();
             if (data.geometry && data.geometry.length > 1) {
                 const latlngs = data.geometry.map(p => [p.lat, p.lon]);
@@ -677,7 +687,8 @@ searchMapBtn.addEventListener('click', async () => {
         let html = '';
         trails.forEach(t => {
             const diff = difficultyLabel(t.difficulty);
-            const trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+            let trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+            if (t.way_ids && t.way_ids.length > 1) trailUrl += `?way_ids=${t.way_ids.join(',')}`;
             html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
                 <h3 class="tc-name">${t.name}</h3>
                 <div class="tc-tags">
