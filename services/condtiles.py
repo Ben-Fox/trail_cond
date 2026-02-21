@@ -54,25 +54,124 @@ def _lerp_color(score):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(4))
 
 
-def _infer_condition(daily):
-    """Infer trail condition from 7-day weather data. Returns score (0-4)."""
-    total_snow = sum(v for v in (daily.get('snowfall_sum') or []) if v)
-    total_rain = sum(v for v in (daily.get('rain_sum') or []) if v)
-    total_precip = sum(v for v in (daily.get('precipitation_sum') or []) if v)
-    min_temps = [v for v in (daily.get('temperature_2m_min') or []) if v is not None]
-    avg_min = sum(min_temps) / len(min_temps) if min_temps else 0
-
-    if total_snow > 5:
+def _infer_condition(daily, current=None, elevation=0):
+    """
+    Moisture Budget Model — simulates day-by-day trail moisture.
+    
+    Instead of just summing 7-day totals, we track how wet the ground is
+    each day by adding precipitation and subtracting drying. This handles:
+    - Rain 2 days ago + hot/sunny since = dry
+    - Rain 2 days ago + cool/cloudy since = still muddy
+    - Snow a week ago at high elevation = still snowy
+    - Light rain + high evapotranspiration = already dry
+    
+    Uses Open-Meteo's et0_fao_evapotranspiration (scientific evaporation rate),
+    solar radiation, temperature, and wind to compute drying.
+    """
+    rain_days = daily.get('rain_sum') or []
+    snow_days = daily.get('snowfall_sum') or []
+    temp_max = daily.get('temperature_2m_max') or []
+    temp_min = daily.get('temperature_2m_min') or []
+    et0_days = daily.get('et0_fao_evapotranspiration') or []
+    solar_days = daily.get('shortwave_radiation_sum') or []
+    wind_days = daily.get('windspeed_10m_max') or []
+    
+    n_days = len(rain_days)
+    if n_days == 0:
+        return COND_SCORE['clear']
+    
+    # Current snow depth (meters) from Open-Meteo
+    snow_depth_m = 0
+    if current:
+        snow_depth_m = current.get('snow_depth', 0) or 0
+    snow_depth_in = snow_depth_m * 39.37
+    elev_ft = (elevation or 0) * 3.281
+    
+    # --- Snow check first (snow depth is the strongest signal) ---
+    if snow_depth_in > 12:
+        return COND_SCORE['snowy']  # Deep snow on ground, definitely snowy
+    if snow_depth_in > 3:
+        # Some snow — check if it's freezing (icy) or just snowy
+        current_temp = (current or {}).get('temperature_2m', 0) or 0
+        if current_temp < 0:
+            return COND_SCORE['icy']
         return COND_SCORE['snowy']
-    if total_snow > 0.5:
+    
+    # --- Moisture budget simulation ---
+    # Walk through each day, accumulating moisture and subtracting drying
+    moisture = 0.0  # mm of "effective wetness" on the trail
+    snow_on_ground = 0.0  # cm of accumulated snow
+    
+    for i in range(n_days):
+        rain = (rain_days[i] or 0)
+        snow = (snow_days[i] or 0)
+        t_max = (temp_max[i] if i < len(temp_max) and temp_max[i] is not None else 10)
+        t_min = (temp_min[i] if i < len(temp_min) and temp_min[i] is not None else 0)
+        et0 = (et0_days[i] if i < len(et0_days) and et0_days[i] is not None else 1.5)
+        solar = (solar_days[i] if i < len(solar_days) and solar_days[i] is not None else 10)
+        wind = (wind_days[i] if i < len(wind_days) and wind_days[i] is not None else 10)
+        
+        avg_temp = (t_max + t_min) / 2
+        
+        # Add precipitation to moisture
+        moisture += rain
+        snow_on_ground += snow
+        
+        # Snowmelt adds to moisture if warm enough
+        if avg_temp > 2 and snow_on_ground > 0:
+            melt_rate = min(snow_on_ground, (avg_temp - 2) * 0.5)  # degree-day melt
+            snow_on_ground -= melt_rate
+            moisture += melt_rate * 0.8  # snow water equivalent
+        
+        # Drying calculation — multiple factors
+        # Base: evapotranspiration is the scientific standard (mm/day of evaporation)
+        drying = et0
+        
+        # Temperature boost: hot days dry trails much faster
+        # Below 10°C: minimal extra drying. Above 25°C: rapid drying.
+        if avg_temp > 10:
+            temp_factor = 1.0 + (avg_temp - 10) * 0.08  # +8% per degree above 10°C
+        else:
+            temp_factor = max(0.3, 0.5 + avg_temp * 0.05)  # cold = slow drying
+        drying *= temp_factor
+        
+        # Solar radiation boost: sunny days vs cloudy
+        # Typical range: 5 (overcast winter) to 30 (clear summer)
+        solar_factor = max(0.5, solar / 15.0)  # normalize around 15 MJ/m²
+        drying *= solar_factor
+        
+        # Wind boost: wind accelerates evaporation
+        wind_factor = 1.0 + max(0, wind - 10) * 0.02  # +2% per km/h above 10
+        drying *= wind_factor
+        
+        # High elevation penalty: trails dry slower at altitude (thinner air, 
+        # often shadowed, snow lingers)
+        if elev_ft > 8000:
+            drying *= 0.6
+        elif elev_ft > 6000:
+            drying *= 0.8
+        
+        # Apply drying (can't go below 0)
+        moisture = max(0, moisture - drying)
+    
+    # --- Classify based on remaining moisture + snow ---
+    # Also factor in recent heavy snowfall even if snow_depth sensor reads low
+    total_snow = sum(v for v in snow_days if v)
+    
+    if snow_on_ground > 5 or total_snow > 8:
+        return COND_SCORE['snowy']
+    if snow_on_ground > 1:
+        avg_min = sum(v for v in (temp_min or []) if v is not None) / max(1, len([v for v in (temp_min or []) if v is not None]))
         return COND_SCORE['icy'] if avg_min < 0 else COND_SCORE['snowy']
-    if total_rain > 20:
-        return COND_SCORE['muddy']
-    if total_rain > 5:
-        return COND_SCORE['wet']
-    if total_precip < 2:
-        return COND_SCORE['dry']
-    return COND_SCORE['clear']
+    
+    # Moisture thresholds for mud/wet/dry
+    if moisture > 12:
+        return COND_SCORE['muddy']   # saturated ground
+    if moisture > 5:
+        return COND_SCORE['wet']     # noticeably damp
+    if moisture > 2:
+        return COND_SCORE['clear']   # slightly damp but fine
+    return COND_SCORE['dry']         # bone dry
 
 
 def _fetch_grid_conditions(lat_s, lat_n, lon_w, lon_e, samples=4):
@@ -91,7 +190,8 @@ def _fetch_grid_conditions(lat_s, lat_n, lon_w, lon_e, samples=4):
         r = http_session.get('https://api.open-meteo.com/v1/forecast', params={
             'latitude': lats,
             'longitude': lons,
-            'daily': 'precipitation_sum,snowfall_sum,rain_sum,temperature_2m_min',
+            'daily': 'precipitation_sum,snowfall_sum,rain_sum,temperature_2m_max,temperature_2m_min,shortwave_radiation_sum,et0_fao_evapotranspiration,windspeed_10m_max',
+            'current': 'snow_depth,temperature_2m',
             'past_days': 7,
             'forecast_days': 1,
             'timezone': 'auto'
@@ -104,7 +204,9 @@ def _fetch_grid_conditions(lat_s, lat_n, lon_w, lon_e, samples=4):
         scored = []
         for i, d in enumerate(data):
             daily = d.get('daily', {})
-            score = _infer_condition(daily)
+            current = d.get('current', {})
+            elevation = d.get('elevation', 0)
+            score = _infer_condition(daily, current=current, elevation=elevation)
             scored.append((points[i][0], points[i][1], score))
         return scored
     except Exception as e:
