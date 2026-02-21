@@ -157,6 +157,22 @@ async function updateMarkerConditions(trails) {
             if (marker && marker._trailCondition !== cached.condition) {
                 marker.setIcon(getConditionIcon(cached.condition));
                 marker._trailCondition = cached.condition;
+                // Update popup with condition info
+                const condLabel = cached.condition.charAt(0).toUpperCase() + cached.condition.slice(1);
+                const condColors = {clear:'#2d6a4f',dry:'#2d6a4f',wet:'#b08968',muddy:'#7f5539',snowy:'#4a90d9',icy:'#c44536'};
+                const condColor = condColors[cached.condition] || '#2d6a4f';
+                const reasons = (cached.reasons || []).slice(0, 2).join('<br>');
+                let trailUrl = `/trail/${t.osm_type}/${t.osm_id}`;
+                if (t.way_ids && t.way_ids.length > 1) trailUrl += `?way_ids=${t.way_ids.join(',')}`;
+                const diff = difficultyLabel(t.difficulty);
+                marker.setPopupContent(
+                    `<b>${t.name}</b><br>` +
+                    `<span style="color:${condColor};font-weight:700">${condLabel}</span><br>` +
+                    `<small style="color:#666">${reasons}</small><br>` +
+                    `${diff ? diff + '<br>' : ''}` +
+                    `<a href="${trailUrl}">View Trail</a><br>` +
+                    `<small style="color:#888">Click pin to show route</small>`
+                );
                 changed = true;
             }
         }
@@ -691,8 +707,18 @@ function renderResults(trails, skipFitBounds) {
             const cached = conditionCache[condCacheKey(t.lat, t.lon)];
             const icon = cached ? getConditionIcon(cached.condition) : defaultIcon;
             
+            // Show condition in initial popup if cached, otherwise show loading
+            let popupHtml;
+            if (cached) {
+                const condLabel = cached.condition.charAt(0).toUpperCase() + cached.condition.slice(1);
+                const condColors = {clear:'#2d6a4f',dry:'#2d6a4f',wet:'#b08968',muddy:'#7f5539',snowy:'#4a90d9',icy:'#c44536'};
+                const reasons = (cached.reasons || []).slice(0, 2).join('<br>');
+                popupHtml = `<b>${t.name}</b><br><span style="color:${condColors[cached.condition] || '#2d6a4f'};font-weight:700">${condLabel}</span><br><small style="color:#666">${reasons}</small><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`;
+            } else {
+                popupHtml = `<b>${t.name}</b><br><small style="color:#888">Loading conditions...</small><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`;
+            }
             const m = L.marker([t.lat, t.lon], {icon: icon})
-                .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`);
+                .bindPopup(popupHtml);
             m._trailData = t;
             m._trailCondition = cached ? cached.condition : 'clear';
             m.on('click', function() {
