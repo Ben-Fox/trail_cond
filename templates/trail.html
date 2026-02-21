@@ -93,17 +93,17 @@ async function loadTrail() {
     if (trail.operator) html += `<p class="trail-operator">Managed by: ${trail.operator}</p>`;
     if (trail.website) html += `<p><a href="${trail.website}" target="_blank" rel="noopener">Official Website</a></p>`;
     
-    // === ACTION CARDS ===
+    // === ACTION CARDS (matching homepage style) ===
     const reportUrl = `/report?trail=${encodeURIComponent(trail.name)}&id=${OSM_TYPE}:${OSM_ID}`;
-    html += `<div class="trail-actions">
-        <a href="${reportUrl}" class="trail-action-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            <span>Submit Full Report</span>
-        </a>
-        <button class="trail-action-card" id="openQuickLogTrail">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span>Conditions Quick Log</span>
-        </button>
+    html += `<div class="trail-actions-hero">
+        <div class="trail-hero-btn-wrap">
+            <a href="${reportUrl}" class="btn-hero-trail">Submit Full Report</a>
+            <p class="btn-note-trail">In-depth report to help the community know what to expect</p>
+        </div>
+        <div class="trail-hero-btn-wrap">
+            <button class="btn-hero-trail" id="openQuickLogTrail">Conditions Quick Log</button>
+            <p class="btn-note-trail">Quickly report conditions and hazards in a few taps</p>
+        </div>
     </div>`;
     
     // === CONDITIONS SECTION (TOP) — Two columns ===
@@ -113,7 +113,7 @@ async function loadTrail() {
     html += `<div class="condition-panel" id="weatherConditions">
         <h2>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-            Trail Conditions Based On Weather
+            Predicted Trail Conditions Based On Previous Weather
         </h2>
         <p class="muted">Loading weather data...</p>
     </div>`;
@@ -419,7 +419,7 @@ async function loadTrail() {
             
             document.getElementById('weatherConditions').innerHTML = `<h2>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                Trail Conditions Based On Weather</h2>${whtml}`;
+                Predicted Trail Conditions Based On Previous Weather</h2>${whtml}`;
         }
     }
     
