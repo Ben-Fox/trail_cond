@@ -1036,75 +1036,22 @@ body {
     border-color: var(--green-light);
 }
 
-/* Homepage action cards */
-.home-actions {
-    padding: 2rem 0 1rem;
-}
-.action-stack {
+/* Homepage hero buttons */
+.hero-buttons {
     display: flex;
-    flex-direction: column;
-    gap: 12px;
-    max-width: 600px;
-    margin: 0 auto;
-}
-.action-card {
-    display: flex;
-    align-items: center;
     gap: 16px;
-    padding: 20px 24px;
-    background: white;
-    border: 2px solid rgba(0,0,0,0.06);
-    border-radius: 16px;
-    text-decoration: none;
-    color: inherit;
-    transition: all 0.2s;
-    cursor: pointer;
-}
-.action-card:hover {
-    border-color: var(--green-light);
-    box-shadow: 0 4px 16px rgba(45,106,79,0.12);
-    transform: translateY(-2px);
-}
-.action-card-icon {
-    flex-shrink: 0;
-    width: 56px;
-    height: 56px;
-    border-radius: 14px;
-    background: var(--sand);
-    display: flex;
-    align-items: center;
     justify-content: center;
-    color: var(--green);
+    flex-wrap: wrap;
+    margin-top: 8px;
 }
-.action-card-icon-accent {
-    background: var(--green);
-    color: white;
+.hero-btn-wrap {
+    text-align: center;
 }
-.action-card-icon-accent svg {
-    stroke: white;
-}
-.action-card-text {
-    flex: 1;
-}
-.action-card-text h3 {
+.btn-note {
     font-family: 'Nunito', sans-serif;
-    font-size: 1.1rem;
-    font-weight: 800;
-    color: var(--green);
-    margin: 0 0 4px;
-}
-.action-card-text p {
-    font-family: 'Nunito', sans-serif;
-    font-size: 0.85rem;
-    color: #777;
-    margin: 0;
-    line-height: 1.4;
-}
-.action-arrow {
-    flex-shrink: 0;
-    color: #ccc;
-    transition: color 0.2s;
-}
-.action-card:hover .action-arrow {
-    color: var(--green);
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.7);
+    margin: 6px 0 0;
+    max-width: 220px;
+    line-height: 1.3;
 }
