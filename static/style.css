@@ -379,32 +379,14 @@ body {
 .trail-operator { color: var(--text-light); font-size: 0.9rem; }
 
 /* Trail marker clusters */
-.trail-cluster {
-    background: rgba(45, 106, 79, 0.7);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* Custom cluster pin icons */
+.cluster-pin {
+    background: none !important;
+    border: none !important;
 }
-.trail-cluster div {
-    background: rgba(45, 106, 79, 0.9);
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.cluster-pin svg {
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
 }
-.trail-cluster span {
-    color: white;
-    font-family: 'Nunito', sans-serif;
-    font-weight: 700;
-    font-size: 13px;
-}
-.trail-cluster-medium div { width: 36px; height: 36px; }
-.trail-cluster-medium span { font-size: 14px; }
-.trail-cluster-large div { width: 44px; height: 44px; }
-.trail-cluster-large span { font-size: 16px; }
 
 /* Dual conditions panels */
 .conditions-dual {

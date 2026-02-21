@@ -147,9 +147,12 @@ async function updateMarkerConditions(trails) {
             const marker = markerMap.get(mKey);
             if (marker) {
                 marker.setIcon(getConditionIcon(cached.condition));
+                marker._trailCondition = cached.condition;
             }
         }
     }
+    // Refresh clusters so they pick up updated condition colors
+    if (markerCluster) markerCluster.refreshClusters();
 }
 
 // Trail type filter chips
@@ -191,15 +194,52 @@ function initMap() {
         maxClusterRadius: 50,
         spiderfyOnMaxZoom: true,
         showCoverageOnHover: false,
+        chunkedLoading: true,
         iconCreateFunction: function(cluster) {
             const count = cluster.getChildCount();
-            let size = 'small';
-            if (count >= 50) size = 'large';
-            else if (count >= 10) size = 'medium';
+            let size = count >= 50 ? 'large' : count >= 10 ? 'medium' : 'small';
+            const dims = {small: [44, 54], medium: [52, 64], large: [60, 74]};
+            const [w, h] = dims[size];
+            const fs = {small: 13, medium: 15, large: 17}[size];
+            
+            // Determine dominant condition from child markers
+            const condCounts = {};
+            cluster.getAllChildMarkers().forEach(m => {
+                const cond = m._trailCondition || 'clear';
+                condCounts[cond] = (condCounts[cond] || 0) + 1;
+            });
+            let dominant = 'clear';
+            let maxCount = 0;
+            // Priority: icy > snowy > muddy > wet > clear/dry
+            const priority = {icy: 50, snowy: 40, muddy: 30, wet: 20, clear: 0, dry: 0};
+            for (const [cond, cnt] of Object.entries(condCounts)) {
+                const score = cnt + (priority[cond] || 0) * 0.01;
+                if (score > maxCount) { maxCount = score; dominant = cond; }
+            }
+            
+            const colors = {
+                clear: {pin: '#2d6a4f', inner: '#52b788'},
+                dry: {pin: '#2d6a4f', inner: '#52b788'},
+                wet: {pin: '#2d6a4f', inner: '#7b9ec4'},
+                muddy: {pin: '#7f5539', inner: '#b08968'},
+                snowy: {pin: '#4a90d9', inner: '#7bb8e8'},
+                icy: {pin: '#c44536', inner: '#e07060'},
+                closed: {pin: '#555', inner: '#888'},
+            };
+            const c = colors[dominant] || colors.clear;
+            
+            // SVG pin shape with count
+            const svg = `<svg width="${w}" height="${h}" viewBox="0 0 44 54" xmlns="http://www.w3.org/2000/svg">
+              <path d="M22,2 C33,2 42,11 42,22 C42,33 22,52 22,52 C22,52 2,33 2,22 C2,11 11,2 22,2Z" fill="${c.pin}" stroke="#f5f0e8" stroke-width="2"/>
+              <circle cx="22" cy="20" r="13" fill="${c.inner}"/>
+              <text x="22" y="25" text-anchor="middle" font-family="Nunito,sans-serif" font-weight="800" font-size="${fs}" fill="#fff">${count}</text>
+            </svg>`;
+            
             return L.divIcon({
-                html: '<div><span>' + count + '</span></div>',
-                className: 'trail-cluster trail-cluster-' + size,
-                iconSize: L.point(40, 40)
+                html: svg,
+                className: 'cluster-pin',
+                iconSize: L.point(w, h),
+                iconAnchor: L.point(w/2, h),
             });
         }
     });
@@ -713,6 +753,7 @@ function renderResults(trails, skipFitBounds) {
             const m = L.marker([t.lat, t.lon], {icon: icon})
                 .bindPopup(`<b>${t.name}</b><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`);
             m._trailData = t;
+            m._trailCondition = cached ? cached.condition : 'clear';
             m.on('click', function() {
                 loadTrailRoute(this._trailData);
             });
