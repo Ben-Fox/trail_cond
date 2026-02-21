@@ -34,6 +34,7 @@ function difficultyLabel(sac) {
 
 async function loadTrail() {
     let trailConditionPin = null;
+    try {
     // Pass way_ids from URL params if present (merged trail segments)
     const urlParams = new URLSearchParams(window.location.search);
     const wayIds = urlParams.get('way_ids') || '';
@@ -211,9 +212,35 @@ async function loadTrail() {
         });
     }
     
-    // Load elevation profile
-    if (trail.geometry && trail.geometry.length > 2) {
-        // Sample points (max 100 for API)
+    // Load elevation + weather in parallel (don't let one block the other)
+    const elevationPromise = loadElevation(trail, trailMap);
+    const weatherPromise = loadWeather(trail, trailConditionPin);
+    
+    // Await both (each handles its own errors)
+    await Promise.all([elevationPromise, weatherPromise]);
+    
+    // Report form handler
+    document.getElementById('reportForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const fd = new FormData(this);
+        const data = Object.fromEntries(fd);
+        await fetch(`/api/trail/${REPORT_KEY}/reports`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+        this.reset();
+        const rr = await fetch(`/api/trail/${REPORT_KEY}/reports`);
+        document.getElementById('reportsList').innerHTML = renderReports(await rr.json());
+    });
+    
+    } catch(e) {
+        console.error('loadTrail error:', e);
+        document.getElementById('trailContent').innerHTML = `<p>Error loading trail data. Please try refreshing.</p>`;
+    }
+}
+
+async function loadElevation(trail, trailMap) {
+    if (!trail.geometry || trail.geometry.length <= 2) return;
+    let elevMarker = null;
+    
+    try {
         const pts = trail.geometry;
         const step = Math.max(1, Math.floor(pts.length / 100));
         const sampled = pts.filter((_, i) => i % step === 0);
@@ -222,9 +249,8 @@ async function loadTrail() {
         const lats = sampled.map(p => p.lat.toFixed(5)).join(',');
         const lons = sampled.map(p => p.lon.toFixed(5)).join(',');
         
-        try {
-            const eRes = await fetch(`/api/elevation?lats=${lats}&lons=${lons}`);
-            const eData = await eRes.json();
+        const eRes = await fetch(`/api/elevation?lats=${lats}&lons=${lons}`);
+        const eData = await eRes.json();
             if (eData.elevation && eData.elevation.length) {
                 const elev = eData.elevation;
                 const minE = Math.min(...elev);
@@ -366,77 +392,74 @@ async function loadTrail() {
                 });
                 canvas.style.cursor = 'crosshair';
             }
-        } catch(e) {
-            document.getElementById('elevationSection').innerHTML = '<h2>Elevation Profile</h2><p class="muted">Could not load elevation data</p>';
-        }
+    } catch(e) {
+        console.error('Elevation load error:', e);
+        const elevSec = document.getElementById('elevationSection');
+        if (elevSec) elevSec.innerHTML = '<h2>Elevation Profile</h2><p class="muted">Could not load elevation data</p>';
     }
+}
+
+async function loadWeather(trail, trailConditionPin) {
+    if (!trail.lat || !trail.lon) return;
     
-    // Load weather conditions
-    if (trail.lat && trail.lon) {
+    try {
         const wr = await fetch(`/api/weather/history?lat=${trail.lat}&lon=${trail.lon}`);
         const w = await wr.json();
-        if (!w.error) {
-            let whtml = '';
-            const tempF = Math.round(w.current.temp_c * 9/5 + 32);
-            const wDesc = weatherDescriptions[w.current.weathercode] || 'Unknown';
-            
-            // Current weather
-            whtml += `<div class="weather-current"><span class="weather-temp">${tempF}°F</span> <span class="weather-desc">${wDesc}</span></div>`;
-            whtml += `<div class="weather-wind">Wind: ${w.current.windspeed} km/h</div>`;
-            
-            // Condition badge
-            const inf = w.inference;
-            whtml += `<div class="condition-badge" style="background:${inf.color}">${inf.condition.toUpperCase()}</div>`;
-            
-            // Update map pin to match condition
-            if (trailConditionPin) {
-                const condIconMap = {
-                    'clear': '/static/pins/cond-clear.svg', 'dry': '/static/pins/cond-clear.svg',
-                    'wet': '/static/pins/cond-wet.svg', 'muddy': '/static/pins/cond-muddy.svg',
-                    'snowy': '/static/pins/cond-snowy.svg', 'icy': '/static/pins/cond-icy.svg',
-                    'closed': '/static/pins/cond-closed.svg',
-                };
-                trailConditionPin.setIcon(L.icon({
-                    iconUrl: condIconMap[inf.condition] || condIconMap['clear'],
-                    iconSize: [40, 50], iconAnchor: [20, 50], popupAnchor: [0, -50],
-                }));
-            }
-            
-            // Reasoning
-            whtml += `<div class="condition-reasons">`;
-            inf.reasons.forEach(r => { whtml += `<p class="reason">${r}</p>`; });
-            whtml += `</div>`;
-            
-            // 7-day history
-            whtml += `<div class="weather-history"><h3>7-Day History</h3><div class="history-grid">`;
-            const codes = w.daily.codes || [];
-            for (let i = 0; i < (w.daily.dates||[]).length; i++) {
-                const d = w.daily.dates[i];
-                const hi = w.daily.temp_max[i] != null ? Math.round(w.daily.temp_max[i]*9/5+32) : '--';
-                const lo = w.daily.temp_min[i] != null ? Math.round(w.daily.temp_min[i]*9/5+32) : '--';
-                const precip = w.daily.precip[i] || 0;
-                const snow = w.daily.snow[i] || 0;
-                const code = codes[i] != null ? codes[i] : 0;
-                whtml += `<div class="history-day">${weatherIcon(code)}<div class="hd-date">${d.slice(5)}</div><div class="hd-temp">${hi}/${lo}°F</div>${precip > 0 ? `<div class="hd-precip">${precip}mm rain</div>` : ''}${snow > 0 ? `<div class="hd-snow">${snow}cm snow</div>` : ''}</div>`;
-            }
-            whtml += `</div></div>`;
-            
-            document.getElementById('weatherConditions').innerHTML = `<h2>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                Predicted Trail Conditions Based On Previous Weather</h2>${whtml}`;
+        if (w.error) {
+            console.error('Weather API error:', w.error);
+            document.getElementById('weatherConditions').querySelector('.muted').textContent = 'Weather data unavailable';
+            return;
         }
+        
+        let whtml = '';
+        const tempF = Math.round(w.current.temp_c * 9/5 + 32);
+        const wDesc = weatherDescriptions[w.current.weathercode] || 'Unknown';
+        
+        whtml += `<div class="weather-current"><span class="weather-temp">${tempF}°F</span> <span class="weather-desc">${wDesc}</span></div>`;
+        whtml += `<div class="weather-wind">Wind: ${w.current.windspeed} km/h</div>`;
+        
+        const inf = w.inference;
+        whtml += `<div class="condition-badge" style="background:${inf.color}">${inf.condition.toUpperCase()}</div>`;
+        
+        // Update map pin to match condition
+        if (trailConditionPin) {
+            const condIconMap = {
+                'clear': '/static/pins/cond-clear.svg', 'dry': '/static/pins/cond-clear.svg',
+                'wet': '/static/pins/cond-wet.svg', 'muddy': '/static/pins/cond-muddy.svg',
+                'snowy': '/static/pins/cond-snowy.svg', 'icy': '/static/pins/cond-icy.svg',
+                'closed': '/static/pins/cond-closed.svg',
+            };
+            trailConditionPin.setIcon(L.icon({
+                iconUrl: condIconMap[inf.condition] || condIconMap['clear'],
+                iconSize: [40, 50], iconAnchor: [20, 50], popupAnchor: [0, -50],
+            }));
+        }
+        
+        whtml += `<div class="condition-reasons">`;
+        inf.reasons.forEach(r => { whtml += `<p class="reason">${r}</p>`; });
+        whtml += `</div>`;
+        
+        whtml += `<div class="weather-history"><h3>7-Day History</h3><div class="history-grid">`;
+        const codes = w.daily.codes || [];
+        for (let i = 0; i < (w.daily.dates||[]).length; i++) {
+            const d = w.daily.dates[i];
+            const hi = w.daily.temp_max[i] != null ? Math.round(w.daily.temp_max[i]*9/5+32) : '--';
+            const lo = w.daily.temp_min[i] != null ? Math.round(w.daily.temp_min[i]*9/5+32) : '--';
+            const precip = w.daily.precip[i] || 0;
+            const snow = w.daily.snow[i] || 0;
+            const code = codes[i] != null ? codes[i] : 0;
+            whtml += `<div class="history-day">${weatherIcon(code)}<div class="hd-date">${d.slice(5)}</div><div class="hd-temp">${hi}/${lo}°F</div>${precip > 0 ? `<div class="hd-precip">${precip}mm rain</div>` : ''}${snow > 0 ? `<div class="hd-snow">${snow}cm snow</div>` : ''}</div>`;
+        }
+        whtml += `</div></div>`;
+        
+        document.getElementById('weatherConditions').innerHTML = `<h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            Predicted Trail Conditions Based On Previous Weather</h2>${whtml}`;
+    } catch(e) {
+        console.error('Weather load error:', e);
+        const wc = document.getElementById('weatherConditions');
+        if (wc) wc.querySelector('.muted').textContent = 'Could not load weather data';
     }
-    
-    // Report form handler
-    document.getElementById('reportForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const fd = new FormData(this);
-        const data = Object.fromEntries(fd);
-        await fetch(`/api/trail/${REPORT_KEY}/reports`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
-        this.reset();
-        const rr = await fetch(`/api/trail/${REPORT_KEY}/reports`);
-        document.getElementById('reportsList').innerHTML = renderReports(await rr.json());
-    });
 }
 
 function renderReports(reports) {
@@ -491,7 +514,7 @@ async function vote(id, type) {
     document.getElementById('reportsList').innerHTML = renderReports(await rr.json());
 }
 
-loadTrail().then(() => {
+loadTrail().catch(e => console.error('loadTrail uncaught:', e)).then(() => {
     const qlBtn = document.getElementById('openQuickLogTrail');
     if (qlBtn) {
         qlBtn.addEventListener('click', function() {
