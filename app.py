@@ -244,51 +244,94 @@ def api_autocomplete():
     
     results = []
     
-    # 1. Query Nominatim for place suggestions — sorted by importance (popularity)
+    # 1. Query Photon (Komoot) for autocomplete — much better partial matching than Nominatim
     try:
-        r = http_session.get(NOMINATIM_URL, params={
-            'q': q, 'format': 'json', 'limit': 15, 'countrycodes': 'us',
-            'addressdetails': 1
+        r = http_session.get('https://photon.komoot.io/api/', params={
+            'q': q, 'limit': 15, 'lang': 'en',
+            'bbox': '-125,24,-66,50',  # Continental US
         }, timeout=5)
-        places = r.json()
+        features = r.json().get('features', [])
         
-        # Sort by importance (higher = more popular/well-known) and prefer outdoor features
-        def place_score(p):
-            importance = float(p.get('importance', 0))
-            cls = p.get('class', '')
-            typ = p.get('type', '')
-            # Boost natural features, parks, and trails
-            if cls == 'natural' or typ in ('peak', 'mountain', 'lake', 'river', 'valley'):
-                importance += 0.3
-            elif cls == 'leisure' or 'park' in typ or 'forest' in typ:
-                importance += 0.2
-            elif cls == 'highway' and typ in ('path', 'footway', 'track'):
-                importance += 0.25
-            elif cls == 'boundary' and 'national' in p.get('display_name', '').lower():
-                importance += 0.2
-            return -importance  # negative for ascending sort
+        # Score and sort: prefer outdoor/natural features
+        def place_score(f):
+            props = f.get('properties', {})
+            osm_value = props.get('osm_value', '')
+            osm_key = props.get('osm_key', '')
+            score = 0
+            # Boost natural features, parks, trails
+            if osm_key == 'natural' or osm_value in ('peak', 'mountain', 'lake', 'river', 'valley', 'water'):
+                score += 3
+            elif osm_key == 'leisure' or 'park' in osm_value or 'forest' in osm_value:
+                score += 2
+            elif osm_key == 'highway' and osm_value in ('path', 'footway', 'track'):
+                score += 3
+            elif osm_key == 'boundary' and 'national' in props.get('name', '').lower():
+                score += 2
+            # Boost by name match quality
+            name = props.get('name', '').lower()
+            if name.startswith(q.lower()):
+                score += 2
+            elif q.lower() in name:
+                score += 1
+            return -score
         
-        places.sort(key=place_score)
+        features.sort(key=place_score)
         
-        for place in places[:10]:
-            display = place.get('display_name', '')
-            parts = display.split(',')
-            name = parts[0].strip()
-            context = ', '.join(p.strip() for p in parts[1:3]) if len(parts) > 1 else ''
-            cls = place.get('class', '')
-            typ = place.get('type', '')
-            item_type = 'trail' if cls == 'highway' and typ in ('path', 'footway', 'track') else 'area'
+        for f in features[:10]:
+            props = f.get('properties', {})
+            coords = f.get('geometry', {}).get('coordinates', [])
+            name = props.get('name', '')
+            if not name:
+                continue
+            
+            # Build context from city/state
+            ctx_parts = []
+            if props.get('city'):
+                ctx_parts.append(props['city'])
+            elif props.get('county'):
+                ctx_parts.append(props['county'])
+            if props.get('state'):
+                ctx_parts.append(props['state'])
+            context = ', '.join(ctx_parts)
+            
+            osm_key = props.get('osm_key', '')
+            osm_value = props.get('osm_value', '')
+            item_type = 'trail' if osm_key == 'highway' and osm_value in ('path', 'footway', 'track') else 'area'
+            
             results.append({
                 'type': item_type,
                 'name': name,
                 'context': context,
-                'osm_type': place.get('osm_type'),
-                'osm_id': place.get('osm_id'),
-                'lat': place.get('lat'),
-                'lon': place.get('lon'),
+                'osm_type': props.get('osm_type'),
+                'osm_id': props.get('osm_id'),
+                'lat': str(coords[1]) if len(coords) > 1 else '',
+                'lon': str(coords[0]) if coords else '',
             })
     except Exception:
-        pass
+        # Fallback to Nominatim if Photon fails
+        try:
+            r = http_session.get(NOMINATIM_URL, params={
+                'q': q, 'format': 'json', 'limit': 10, 'countrycodes': 'us'
+            }, timeout=5)
+            for place in r.json():
+                display = place.get('display_name', '')
+                parts = display.split(',')
+                name = parts[0].strip()
+                context = ', '.join(p.strip() for p in parts[1:3]) if len(parts) > 1 else ''
+                cls = place.get('class', '')
+                typ = place.get('type', '')
+                item_type = 'trail' if cls == 'highway' and typ in ('path', 'footway', 'track') else 'area'
+                results.append({
+                    'type': item_type,
+                    'name': name,
+                    'context': context,
+                    'osm_type': place.get('osm_type'),
+                    'osm_id': place.get('osm_id'),
+                    'lat': place.get('lat'),
+                    'lon': place.get('lon'),
+                })
+        except Exception:
+            pass
     
     # 2. Also check cached Overpass results for matching trail names
     for ck, (ts, cdata) in list(_overpass_cache.items()):
