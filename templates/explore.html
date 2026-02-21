@@ -153,6 +153,19 @@ async function updateMarkerConditions(trails) {
             }
         }
     }
+    // Update condition pins in list view cards
+    for (const t of withCoords) {
+        const cached = conditionCache[condCacheKey(t.lat, t.lon)];
+        if (cached) {
+            const card = document.querySelector(`.trail-card[data-trail-id="${t.osm_type}:${t.osm_id}"] .tc-pin`);
+            if (card) {
+                const cond = cached.condition === 'dry' ? 'clear' : cached.condition;
+                card.src = `/static/pins/cond-${cond}.svg`;
+                card.alt = cached.condition;
+            }
+        }
+    }
+    
     // Rebuild clusters to pick up updated condition colors
     if (changed && markerCluster) {
         const allMarkers = [];
@@ -738,17 +751,26 @@ function renderResults(trails, skipFitBounds) {
         const actIcons = trailActivityIcons(t.activities || []);
         const lengthTag = t.length_miles ? `<span class="tag">${t.length_miles} mi</span>` : '';
         
-        html += `<div class="trail-card" onclick="window.location='${trailUrl}'">
-            <h3 class="tc-name">${t.name}</h3>
-            <div class="tc-tags">
-                ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
-                ${lengthTag}
-                ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
-                ${t.distance && !t.length_miles ? `<span class="tag">${t.distance}</span>` : ''}
-                ${actIcons}
+        const condKey = (t.lat && t.lon) ? condCacheKey(t.lat, t.lon) : '';
+        const cachedCond = condKey ? conditionCache[condKey] : null;
+        const pinCond = cachedCond ? cachedCond.condition : 'clear';
+        const pinSrc = `/static/pins/cond-${pinCond === 'dry' ? 'clear' : pinCond}.svg`;
+        const trailId = `${t.osm_type}:${t.osm_id}`;
+        
+        html += `<div class="trail-card" data-trail-id="${trailId}" onclick="window.location='${trailUrl}'">
+            <img class="tc-pin" src="${pinSrc}" alt="${pinCond}" data-lat="${t.lat || ''}" data-lon="${t.lon || ''}">
+            <div class="tc-content">
+                <h3 class="tc-name">${t.name}</h3>
+                <div class="tc-tags">
+                    ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
+                    ${lengthTag}
+                    ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
+                    ${t.distance && !t.length_miles ? `<span class="tag">${t.distance}</span>` : ''}
+                    ${actIcons}
+                </div>
+                ${t.desc ? `<p class="tc-desc">${t.desc}</p>` : ''}
+                <a href="${trailUrl}" class="tc-link">View Trail →</a>
             </div>
-            ${t.desc ? `<p class="tc-desc">${t.desc}</p>` : ''}
-            <a href="${trailUrl}" class="tc-link">View Trail →</a>
         </div>`;
         
         if (t.lat && t.lon) {

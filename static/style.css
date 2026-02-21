@@ -138,11 +138,19 @@ body {
     box-shadow: 0 2px 8px rgba(0,0,0,.06);
     cursor: pointer;
     transition: box-shadow .2s;
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto auto;
-    gap: 4px 12px;
+    display: flex;
     align-items: center;
+    gap: 14px;
+}
+.tc-pin {
+    width: 36px;
+    height: 45px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.2));
+}
+.tc-content {
+    flex: 1;
+    min-width: 0;
 }
 .trail-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); }
 .tc-badge {
