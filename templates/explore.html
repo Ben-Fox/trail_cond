@@ -1,6 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Find Trails — Trail Condish{% endblock %}
 {% block content %}
+<style>
+#trailRouteBanner {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    z-index: 1000; background: var(--cream, #fdfbf7); border-radius: 24px;
+    padding: 8px 16px; display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2); font-family: 'Nunito', sans-serif;
+    font-weight: 700; color: var(--green, #2d6a4f); max-width: 80%;
+}
+#trailRouteBanner span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#trailRouteBanner button {
+    background: none; border: none; font-size: 1.4em; cursor: pointer;
+    color: var(--brown, #7f5539); line-height: 1; padding: 0 2px;
+}
+#trailRouteBanner button:hover { color: var(--green, #2d6a4f); }
+</style>
 <section class="explore-header">
     <div class="container">
         <h1>Find Trails</h1>
@@ -235,7 +250,7 @@ function setBasemap(key) {
 
 function initMap() {
     if (map) return;
-    map = L.map('map').setView([39.5, -98.5], 4);
+    map = L.map('map', { tap: true, touchZoom: true, doubleClickZoom: true }).setView([39.5, -98.5], 4);
     const saved = localStorage.getItem('tc_basemap') || 'carto';
     document.getElementById('basemapSelect').value = saved;
     setBasemap(saved);
@@ -327,9 +342,15 @@ function initMap() {
         }
     });
     
-    // Click to inspect conditions at a point (fetches weather for that point)
-    map.on('click', async function(e) {
+    // Click to inspect conditions at a point — debounced for double-tap zoom
+    let _condClickTimer = null;
+    map.on('click', function(e) {
         if (!conditionsActive) return;
+        clearTimeout(_condClickTimer);
+        _condClickTimer = setTimeout(() => _inspectCondition(e), 300);
+    });
+    map.on('dblclick', () => clearTimeout(_condClickTimer));
+    async function _inspectCondition(e) {
         const lat = e.latlng.lat.toFixed(2), lon = e.latlng.lng.toFixed(2);
         try {
             const res = await fetch(`/api/weather/history?lat=${lat}&lon=${lon}`);
@@ -343,7 +364,7 @@ function initMap() {
                 .setContent(`<strong style="font-size:1.1em">${label}</strong><br><small style="color:#555">${reasons}</small>`)
                 .openOn(map);
         } catch(err) {}
-    });
+    }
     
     // === Air Quality Overlay — same tile approach as conditions ===
     let aqActive = false;
@@ -389,9 +410,15 @@ function initMap() {
         }
     });
     
-    // Click to inspect AQI at a point
-    map.on('click', async function(e) {
+    // Click to inspect AQI at a point — debounced for double-tap zoom
+    let _aqClickTimer = null;
+    map.on('click', function(e) {
         if (!aqActive) return;
+        clearTimeout(_aqClickTimer);
+        _aqClickTimer = setTimeout(() => _inspectAQ(e), 300);
+    });
+    map.on('dblclick', () => clearTimeout(_aqClickTimer));
+    async function _inspectAQ(e) {
         const lat = e.latlng.lat.toFixed(2), lon = e.latlng.lng.toFixed(2);
         try {
             const res = await fetch(`/api/airquality?lat=${lat}&lon=${lon}`);
@@ -409,7 +436,7 @@ function initMap() {
                 .setContent(`<strong style="font-size:1.1em;color:${color}">AQI ${aqi} — ${label}</strong><br><small style="color:#555">${parts.join('<br>')}</small>`)
                 .openOn(map);
         } catch(err) {}
-    });
+    }
 
     document.getElementById('trailOverlayToggle').addEventListener('change', function() {
         if (this.checked) trailsOverlay.addTo(map);
@@ -604,12 +631,39 @@ const TRAIL_CONDITION_COLORS = {
 let activeRouteLayer = null;
 let routeConditionCache = {};
 
+let savedMapView = null;
+
+function closeTrailRoute() {
+    if (activeRouteLayer) {
+        map.removeLayer(activeRouteLayer);
+        activeRouteLayer = null;
+    }
+    map.closePopup();
+    const banner = document.getElementById('trailRouteBanner');
+    if (banner) banner.remove();
+    if (savedMapView) {
+        programmaticMove = true;
+        map.setView(savedMapView.center, savedMapView.zoom);
+        savedMapView = null;
+    }
+}
+
+// Close route + restore view when user clicks off the popup
+map.on('popupclose', function() {
+    if (activeRouteLayer) closeTrailRoute();
+});
+
 async function loadTrailRoute(trail) {
     // Remove previous active route
     if (activeRouteLayer) {
         map.removeLayer(activeRouteLayer);
         activeRouteLayer = null;
     }
+    const oldBanner = document.getElementById('trailRouteBanner');
+    if (oldBanner) oldBanner.remove();
+
+    // Save current view before zooming
+    savedMapView = { center: map.getCenter(), zoom: map.getZoom() };
     
     try {
         let trailApiUrl = `/api/trail/${trail.osm_type}/${trail.osm_id}`;
@@ -663,7 +717,13 @@ async function loadTrailRoute(trail) {
             .setContent(`<b>${trail.name}</b>${condLabel}<br>${diff ? diff + ' · ' : ''}${dist}<br><a href="${trailUrl}">View Trail →</a>`)
             .openOn(map);
         
-        map.fitBounds(L.latLngBounds(latlngs), {padding: [40, 40]});
+        map.fitBounds(L.latLngBounds(latlngs), {padding: [60, 40]});
+
+        // Add close banner at top of map
+        const banner = document.createElement('div');
+        banner.id = 'trailRouteBanner';
+        banner.innerHTML = `<span>${trail.name}</span><button onclick="closeTrailRoute()" title="Close route">&times;</button>`;
+        document.getElementById('map').appendChild(banner);
     } catch(e) {
         console.error('Failed to load trail route:', e);
     }
