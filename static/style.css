@@ -171,6 +171,7 @@ body {
 .trail-page { padding: 30px 20px 60px; }
 .trail-page h1 { font-size: 2.4rem; font-weight: 800; color: var(--green); margin-bottom: 4px; }
 .trail-location { color: var(--text-light); margin-bottom: 16px; font-size: 1rem; }
+.trail-location-sub { color: var(--text-light); font-size: 0.9rem; margin: 0 0 16px 0; font-weight: 400; }
 .trail-desc { margin-bottom: 24px; line-height: 1.7; }
 .section-block { margin-bottom: 36px; }
 .section-block h2 { font-size: 1.6rem; font-weight: 800; color: var(--brown); margin-bottom: 12px; }

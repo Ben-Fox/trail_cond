@@ -4,8 +4,96 @@ from flask import Blueprint, request, jsonify
 from services.cache import cached_response, cache_response
 from services.overpass import overpass_query, CACHE_TTL
 from services.usgs import usgs_query_bbox
+from services import http_session
 
 trail_bp = Blueprint('trail', __name__)
+
+
+def _reverse_geocode(lat, lon):
+    """Get nearest city/town + state via Nominatim, and check for public land via Overpass."""
+    location = {}
+
+    # Nominatim reverse geocode
+    try:
+        r = http_session.get(
+            'https://nominatim.openstreetmap.org/reverse',
+            params={'lat': lat, 'lon': lon, 'format': 'json', 'zoom': 10, 'addressdetails': 1},
+            headers={'User-Agent': 'TrailCondish/1.0'},
+            timeout=5
+        )
+        if r.ok:
+            addr = r.json().get('address', {})
+            city = addr.get('city') or addr.get('town') or addr.get('village') or addr.get('hamlet') or ''
+            state = addr.get('state', '')
+            county = addr.get('county', '')
+            if city:
+                location['city'] = city
+            if state:
+                location['state'] = state
+            if county:
+                location['county'] = county
+    except Exception:
+        pass
+
+    # Overpass: check if point is inside a national forest, national park, or BLM land
+    try:
+        land_query = f'''[out:json][timeout:10];
+(
+  relation(around:100,{lat},{lon})["boundary"="national_park"];
+  relation(around:100,{lat},{lon})["boundary"="protected_area"]["protect_class"~"^(2|3|4|5|6)$"];
+  relation(around:100,{lat},{lon})["leisure"="nature_reserve"];
+  way(around:100,{lat},{lon})["boundary"="national_park"];
+  way(around:100,{lat},{lon})["boundary"="protected_area"]["protect_class"~"^(2|3|4|5|6)$"];
+);
+out tags 3;'''
+        land_data = overpass_query(land_query)
+        land_els = land_data.get('elements', [])
+
+        for le in land_els:
+            t = le.get('tags', {})
+            name = t.get('name', '')
+            if not name:
+                continue
+            name_lower = name.lower()
+            if 'national forest' in name_lower or 'national grassland' in name_lower:
+                location['public_land'] = name
+                location['land_type'] = 'National Forest'
+                break
+            elif 'national park' in name_lower:
+                location['public_land'] = name
+                location['land_type'] = 'National Park'
+                break
+            elif 'blm' in name_lower or 'bureau of land management' in name_lower:
+                location['public_land'] = name
+                location['land_type'] = 'BLM Land'
+                break
+            elif 'wilderness' in name_lower:
+                location['public_land'] = name
+                location['land_type'] = 'Wilderness Area'
+                break
+            elif 'state park' in name_lower or 'state forest' in name_lower:
+                location['public_land'] = name
+                location['land_type'] = 'State Land'
+                break
+            elif 'national monument' in name_lower:
+                location['public_land'] = name
+                location['land_type'] = 'National Monument'
+                break
+            elif name:
+                # Generic protected area
+                location['public_land'] = name
+                operator = t.get('operator', '')
+                if 'blm' in operator.lower() or 'bureau of land' in operator.lower():
+                    location['land_type'] = 'BLM Land'
+                elif 'forest service' in operator.lower() or 'usfs' in operator.lower():
+                    location['land_type'] = 'National Forest'
+                else:
+                    location['land_type'] = 'Protected Area'
+                break
+    except Exception:
+        pass
+
+    return location
 
 
 @trail_bp.route('/api/trail/<osm_type>/<int:osm_id>')
@@ -212,6 +300,14 @@ out center tags;'''
         result['has_trailhead'] = has_trailhead
         result['access_trail'] = access_trail
         result['segments'] = trail_segments if len(trail_segments) > 1 else []
+
+        # Reverse geocode for location context
+        if lat and lon:
+            try:
+                loc = _reverse_geocode(lat, lon)
+                result['location'] = loc
+            except Exception:
+                result['location'] = {}
 
         if lat and lon:
             try:
