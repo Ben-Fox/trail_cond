@@ -17,7 +17,7 @@ def _reverse_geocode(lat, lon):
     try:
         r = http_session.get(
             'https://nominatim.openstreetmap.org/reverse',
-            params={'lat': lat, 'lon': lon, 'format': 'json', 'zoom': 10, 'addressdetails': 1},
+            params={'lat': lat, 'lon': lon, 'format': 'json', 'zoom': 14, 'addressdetails': 1},
             headers={'User-Agent': 'TrailCondish/1.0'},
             timeout=5
         )
