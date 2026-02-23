@@ -533,14 +533,16 @@ async function loadAirQuality(trail) {
         }
         const aqi = aq.us_aqi || 0;
         const label = aq.label || 'Unknown';
-        let color = '#00e400';
+        let color = '#2d9a2d';
+        let textColor = 'white';
         if (aqi > 300) color = '#7e0023';
         else if (aqi > 200) color = '#8f3f97';
         else if (aqi > 150) color = '#ff0000';
         else if (aqi > 100) color = '#ff7e00';
-        else if (aqi > 50) color = '#ffff00';
+        else if (aqi > 50) { color = '#d4a017'; textColor = '#333'; }
+        else { textColor = 'white'; }
         
-        let html = `<div class="condition-badge" style="background:${color}">${label.toUpperCase()}</div>`;
+        let html = `<div class="condition-badge" style="background:${color};color:${textColor}">${label.toUpperCase()}</div>`;
         html += `<div class="aqi-value" style="color:${color};font-size:2em;font-weight:800;margin:0.5rem 0;">AQI ${aqi}</div>`;
         html += `<div class="aqi-details">`;
         if (aq.pm2_5 != null) html += `<p class="reason">PM2.5: ${aq.pm2_5.toFixed(1)} µg/m³</p>`;
@@ -627,7 +629,7 @@ function renderReports(reports) {
     // Synthesize community condition from latest reports
     const latest = reports[0];
     let synthesis = `<div class="community-synthesis">
-        <div class="condition-badge" style="background:${conditionColor(latest.trail_condition)}">${(latest.trail_condition || 'Unknown').toUpperCase()}</div>
+        <div class="condition-badge" style="background:${conditionColor(latest.trail_condition)};color:${conditionTextColor(latest.trail_condition)}">${(latest.trail_condition || 'Unknown').toUpperCase()}</div>
         ${latest.trail_surface ? `<span class="tag">${latest.trail_surface}</span>` : ''}
         ${latest.road_access ? `<span class="tag">Road: ${latest.road_access}</span>` : ''}
         <p class="muted" style="margin-top:0.5rem">Based on ${reports.length} report${reports.length !== 1 ? 's' : ''}</p>
@@ -636,7 +638,7 @@ function renderReports(reports) {
     synthesis += `<div class="reports-list">`;
     synthesis += reports.map(r => `<div class="report">
         <div class="report-header">
-            <span class="report-condition tag" style="background:${conditionColor(r.trail_condition)};color:white">${r.trail_condition || ''}</span>
+            <span class="report-condition tag" style="background:${conditionColor(r.trail_condition)};color:${conditionTextColor(r.trail_condition)}">${r.trail_condition || ''}</span>
             ${r.trail_surface ? `<span class="tag">${r.trail_surface}</span>` : ''}
             ${r.road_access ? `<span class="tag">Road: ${r.road_access}</span>` : ''}
             <span class="report-date">${r.date_visited || r.created_at?.slice(0,10) || ''}</span>
@@ -662,9 +664,16 @@ function conditionColor(cond) {
     const c = cond.toLowerCase();
     if (c === 'great') return '#2d6a4f';
     if (c === 'good') return '#52b788';
-    if (c === 'fair') return '#e9c46a';
+    if (c === 'fair') return '#d4a017';
     if (c === 'poor') return '#c44536';
     return '#6c757d';
+}
+
+function conditionTextColor(cond) {
+    if (!cond) return 'white';
+    const c = cond.toLowerCase();
+    if (c === 'fair') return '#333';
+    return 'white';
 }
 
 async function vote(id, type) {

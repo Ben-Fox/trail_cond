@@ -34,10 +34,10 @@ AQ_POINT_CACHE_TTL = 900  # 15 min
 # Interpolation method: IDW (Inverse Distance Weighting) — same as EPA AirNow contour maps
 # Source: EPA AirNow Mapping Fact Sheet + archive.epa.gov/ttn/ozone/web/pdf/rg701.pdf
 AQI_COLORS = [
-    (0,   (  0, 228,   0, 80)),   # Good - EPA green #00E400
-    (50,  (  0, 228,   0, 90)),
-    (51,  (255, 255,   0, 100)),  # Moderate - EPA yellow #FFFF00
-    (100, (255, 255,   0, 110)),
+    (0,   ( 45, 154,  45, 80)),   # Good - darkened green #2D9A2D
+    (50,  ( 45, 154,  45, 90)),
+    (51,  (212, 160,  23, 100)),  # Moderate - amber #D4A017
+    (100, (212, 160,  23, 110)),
     (101, (255, 126,   0, 120)),  # USG - EPA orange #FF7E00
     (150, (255, 126,   0, 130)),
     (151, (255,   0,   0, 130)),  # Unhealthy - EPA red #FF0000
