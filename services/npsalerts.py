@@ -185,12 +185,16 @@ def _filter_alerts_by_distance(alerts, lat, lon, radius_km):
 @npsalerts_bp.route('/api/alerts')
 def api_alerts():
     """Get NPS alerts near a lat/lon."""
-    lat = request.args.get('lat', type=float)
-    lon = request.args.get('lon', type=float)
-    radius = request.args.get('radius', 80, type=float)
+    try:
+        lat = request.args.get('lat', type=float)
+        lon = request.args.get('lon', type=float)
+        radius = request.args.get('radius', 80, type=float)
 
-    if lat is None or lon is None:
-        return jsonify({'error': 'lat and lon required'}), 400
+        if lat is None or lon is None:
+            return jsonify({'error': 'lat and lon required'}), 400
 
-    alerts = fetch_nearby_alerts(lat, lon, radius)
-    return jsonify({'alerts': alerts, 'count': len(alerts)})
+        alerts = fetch_nearby_alerts(lat, lon, radius)
+        return jsonify({'alerts': alerts, 'count': len(alerts)})
+    except Exception as e:
+        logger.error(f"NPS alerts API error: {e}")
+        return jsonify({'alerts': [], 'count': 0, 'error': 'Service temporarily unavailable'}), 200

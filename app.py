@@ -1,8 +1,12 @@
-from flask import Flask, request
+import logging
+from flask import Flask, request, jsonify
 from flask_compress import Compress
 from database import init_db
 from routes.pages import pages_bp
 from routes.api import ALL_BLUEPRINTS
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -19,6 +23,28 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 86400
 app.register_blueprint(pages_bp)
 for bp in ALL_BLUEPRINTS:
     app.register_blueprint(bp)
+
+
+# Global error handlers — prevent any single module crash from killing the app
+@app.errorhandler(500)
+def handle_500(e):
+    logger.error(f"Internal server error: {e}")
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Internal server error'}), 500
+    return "Something went wrong. Please try again.", 500
+
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Not found'}), 404
+    return "Page not found.", 404
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.error(f"Unhandled exception on {request.path}: {e}", exc_info=True)
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Service temporarily unavailable'}), 500
+    return "Something went wrong. Please try again.", 500
 
 
 @app.after_request

@@ -131,10 +131,14 @@ def fetch_nearby_gauges(lat, lon, radius_deg=0.15):
 @streams_bp.route('/api/streams')
 def api_streams():
     """Get nearby stream gauges for a lat/lon."""
-    lat = request.args.get('lat', type=float)
-    lon = request.args.get('lon', type=float)
-    if lat is None or lon is None:
-        return jsonify({'error': 'lat and lon required'}), 400
+    try:
+        lat = request.args.get('lat', type=float)
+        lon = request.args.get('lon', type=float)
+        if lat is None or lon is None:
+            return jsonify({'error': 'lat and lon required'}), 400
 
-    gauges = fetch_nearby_gauges(lat, lon)
-    return jsonify({'gauges': gauges, 'count': len(gauges)})
+        gauges = fetch_nearby_gauges(lat, lon)
+        return jsonify({'gauges': gauges, 'count': len(gauges)})
+    except Exception as e:
+        logger.error(f"Stream gauge API error: {e}")
+        return jsonify({'gauges': [], 'count': 0, 'error': 'Service temporarily unavailable'}), 200
