@@ -424,6 +424,121 @@ body {
     margin-bottom: 1rem;
     color: var(--green);
 }
+/* Stream Gauge Cards */
+.stream-gauges { display: flex; flex-direction: column; gap: 10px; }
+.stream-gauge-card {
+    background: var(--sand);
+    border-radius: 10px;
+    padding: 12px 14px;
+    border-left: 4px solid var(--green);
+}
+.sg-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.sg-name {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sg-level-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: white;
+    padding: 3px 10px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.sg-stats {
+    display: flex;
+    gap: 1.2rem;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.sg-stat { display: flex; flex-direction: column; }
+.sg-stat-label { font-size: 0.72rem; color: var(--text-light); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.sg-stat-value { font-size: 0.88rem; font-weight: 700; color: var(--text); }
+.sg-bar-wrap {
+    height: 6px;
+    background: rgba(0,0,0,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.sg-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+/* NPS Alert Cards */
+.nps-alerts-list { display: flex; flex-direction: column; gap: 10px; }
+.nps-alert-card {
+    background: var(--sand);
+    border-radius: 10px;
+    padding: 12px 14px;
+    border-left: 4px solid var(--green);
+}
+.nps-alert-card.alert-danger { border-left-color: #c44536; background: #fdf2f0; }
+.nps-alert-card.alert-caution { border-left-color: #e76f51; background: #fef8f0; }
+.nps-alert-card.alert-info { border-left-color: #4a90d9; background: #f0f6fd; }
+.nps-alert-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+.nps-alert-cat {
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.nps-alert-park {
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+.nps-alert-title {
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+.nps-alert-desc {
+    font-size: 0.82rem;
+    color: #555;
+    line-height: 1.4;
+}
+.nps-alert-link {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--green);
+    font-weight: 600;
+    text-decoration: none;
+}
+.nps-alert-link:hover { text-decoration: underline; }
+.nps-no-alerts {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background: rgba(45,106,79,0.06);
+    border-radius: 10px;
+    color: var(--green);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
 .community-synthesis { margin-bottom: 1rem; }
 .reports-list { max-height: 400px; overflow-y: auto; }
 .form-row {
