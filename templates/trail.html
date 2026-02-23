@@ -13,12 +13,6 @@ const FID = `${OSM_TYPE}/${OSM_ID}`;
 const REPORT_KEY = `${OSM_TYPE}:${OSM_ID}`;
 const weatherDescriptions = {0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Foggy',48:'Rime fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Heavy freezing rain',71:'Light snow',73:'Snow',75:'Heavy snow',77:'Snow grains',80:'Light showers',81:'Showers',82:'Heavy showers',85:'Snow showers',86:'Heavy snow showers',95:'Thunderstorm',96:'Thunderstorm w/ hail',99:'Severe thunderstorm'};
 
-// Collapse/expand cards
-function toggleCard(headerEl) {
-    const card = headerEl.closest('.collapse-card');
-    card.classList.toggle('expanded');
-}
-
 function weatherIcon(code) {
     if (code === 0 || code === 1) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#e9c46a" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
     if (code === 2) return '<svg class="w-icon" viewBox="0 0 24 24" fill="none" stroke="#b08968" stroke-width="2"><circle cx="8" cy="10" r="4" stroke="#e9c46a"/><line x1="8" y1="4" x2="8" y2="5" stroke="#e9c46a"/><line x1="3" y1="10" x2="4" y2="10" stroke="#e9c46a"/><path d="M18 10h-1.26A5 5 0 0 0 12 6a4.97 4.97 0 0 0-3 1"/><path d="M18 10a3 3 0 1 1 0 6H10"/></svg>';
@@ -157,83 +151,60 @@ async function loadTrail() {
         </div>
     </div>`;
     
-    // === COLLAPSIBLE INFO CARDS ===
-    // Each card shows a summary when collapsed, full details when expanded
+    // === CONDITIONS SECTION (TOP) — Two columns ===
+    html += `<div class="conditions-dual">`;
     
-    // 1. Community Reports (top priority)
-    html += `<div class="collapse-card" id="communityConditions">
-        <div class="collapse-header" onclick="toggleCard(this)">
-            <div class="collapse-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                <span>Community Trail Reports</span>
-            </div>
-            <div class="collapse-summary" id="communitySummary">${reports.length > 0 ? `<span class="condition-badge-sm" style="background:${conditionColor(reports[0].trail_condition)}">${reports[0].trail_condition || 'Unknown'}</span> <span style="font-size:0.82em;color:#666;">${reports.length} report${reports.length !== 1 ? 's' : ''}</span>` : '<span class="muted">No reports</span>'}</div>
-            <svg class="collapse-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="collapse-body">
-            <div id="reportsList">${renderReports(reports)}</div>
-        </div>
+    // Left: Weather-based conditions
+    html += `<div class="condition-panel" id="weatherConditions">
+        <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            Predicted Trail Conditions Based On Previous Weather
+        </h2>
+        <p class="muted">Loading weather data...</p>
+    </div>`;
+    
+    // Middle: Air Quality
+    html += `<div class="condition-panel" id="airQualityPanel">
+        <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2c3 0 5 2 8 2s4-1 4-1v11s-1 1-4 1-5-2-8-2-4 1-4 1V2s1-1 4-1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            Air Quality
+        </h2>
+        <p class="muted">Loading air quality...</p>
+    </div>`;
+    
+    // Right: Community-based conditions
+    html += `<div class="condition-panel" id="communityConditions">
+        <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Trail Conditions Based On Community
+        </h2>
+        <div id="reportsList">${renderReports(reports)}</div>
+    </div>`;
+    
+    html += `</div>`;
+
+    // === STREAM GAUGES & NPS ALERTS — side by side ===
+    html += `<div class="conditions-dual" style="margin-top:0;">`;
+
+    // Stream/River Crossings
+    html += `<div class="condition-panel" id="streamGaugesPanel">
+        <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>
+            Nearby Stream &amp; River Levels
+        </h2>
+        <p class="muted">Loading stream data...</p>
     </div>`;
 
-    // 2. Weather-based conditions
-    html += `<div class="collapse-card" id="weatherConditions">
-        <div class="collapse-header" onclick="toggleCard(this)">
-            <div class="collapse-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                <span>Predicted Trail Conditions</span>
-            </div>
-            <div class="collapse-summary" id="weatherSummary"><span class="muted">Loading...</span></div>
-            <svg class="collapse-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="collapse-body" id="weatherBody">
-            <p class="muted">Loading weather data...</p>
-        </div>
+    // NPS Alerts
+    html += `<div class="condition-panel" id="npsAlertsPanel">
+        <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            NPS Trail Alerts
+        </h2>
+        <p class="muted">Loading alerts...</p>
     </div>`;
 
-    // 3. Air Quality
-    html += `<div class="collapse-card" id="airQualityPanel">
-        <div class="collapse-header" onclick="toggleCard(this)">
-            <div class="collapse-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2c3 0 5 2 8 2s4-1 4-1v11s-1 1-4 1-5-2-8-2-4 1-4 1V2s1-1 4-1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
-                <span>Air Quality</span>
-            </div>
-            <div class="collapse-summary" id="aqSummary"><span class="muted">Loading...</span></div>
-            <svg class="collapse-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="collapse-body" id="aqBody">
-            <p class="muted">Loading air quality...</p>
-        </div>
-    </div>`;
-
-    // 4. Stream/River Levels
-    html += `<div class="collapse-card" id="streamGaugesPanel">
-        <div class="collapse-header" onclick="toggleCard(this)">
-            <div class="collapse-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>
-                <span>Nearby Stream &amp; River Levels</span>
-            </div>
-            <div class="collapse-summary" id="streamSummary"><span class="muted">Loading...</span></div>
-            <svg class="collapse-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="collapse-body" id="streamBody">
-            <p class="muted">Loading stream data...</p>
-        </div>
-    </div>`;
-
-    // 5. NPS Alerts
-    html += `<div class="collapse-card" id="npsAlertsPanel">
-        <div class="collapse-header" onclick="toggleCard(this)">
-            <div class="collapse-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                <span>NPS Trail Alerts</span>
-            </div>
-            <div class="collapse-summary" id="alertsSummary"><span class="muted">Loading...</span></div>
-            <svg class="collapse-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="collapse-body" id="alertsBody">
-            <p class="muted">Loading alerts...</p>
-        </div>
-    </div>`;
+    html += `</div>`;
     
     // === SUBMIT REPORT ===
     html += `<div class="section-block">
@@ -578,17 +549,12 @@ async function loadAirQuality(trail) {
         if (aq.no2 != null) html += `<p class="reason">NO₂: ${aq.no2.toFixed(1)} µg/m³</p>`;
         html += `</div>`;
         
-        // Update summary
-        const textColor = aqi > 100 ? color : '#333';
-        document.getElementById('aqSummary').innerHTML = 
-            `<span class="condition-badge-sm" style="background:${color};${aqi > 50 && aqi <= 100 ? 'color:#333;' : ''}">AQI ${aqi} · ${label}</span>`;
-        
-        // Update body
-        document.getElementById('aqBody').innerHTML = html;
+        panel.innerHTML = `<h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2c3 0 5 2 8 2s4-1 4-1v11s-1 1-4 1-5-2-8-2-4 1-4 1V2s1-1 4-1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            Air Quality</h2>${html}`;
     } catch(e) {
         console.error('AQ load error:', e);
-        const s = document.getElementById('aqSummary');
-        if (s) s.innerHTML = '<span class="muted">Unavailable</span>';
+        panel.querySelector('.muted').textContent = 'Could not load air quality';
     }
 }
 
@@ -645,16 +611,13 @@ async function loadWeather(trail, trailConditionPin) {
         }
         whtml += `</div></div>`;
         
-        // Update summary (visible when collapsed)
-        document.getElementById('weatherSummary').innerHTML = 
-            `<span style="font-weight:700">${tempF}°F</span> · <span class="condition-badge-sm" style="background:${inf.color}">${inf.condition.charAt(0).toUpperCase() + inf.condition.slice(1)}</span>`;
-        
-        // Update body (visible when expanded)
-        document.getElementById('weatherBody').innerHTML = whtml;
+        document.getElementById('weatherConditions').innerHTML = `<h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            Predicted Trail Conditions Based On Previous Weather</h2>${whtml}`;
     } catch(e) {
         console.error('Weather load error:', e);
-        const s = document.getElementById('weatherSummary');
-        if (s) s.innerHTML = '<span class="muted">Unavailable</span>';
+        const wc = document.getElementById('weatherConditions');
+        if (wc) wc.querySelector('.muted').textContent = 'Could not load weather data';
     }
 }
 
@@ -723,9 +686,9 @@ loadTrail().catch(e => console.error('loadTrail uncaught:', e)).then(() => {
 
 // ═══ Stream/River Gauges ═══
 async function loadStreams(trail) {
-    if (!trail.lat || !trail.lon) {
-        const s = document.getElementById('streamSummary');
-        if (s) s.innerHTML = '<span class="muted">N/A</span>';
+    const panel = document.getElementById('streamGaugesPanel');
+    if (!panel || !trail.lat || !trail.lon) {
+        if (panel) panel.querySelector('p').textContent = 'Location not available';
         return;
     }
     try {
@@ -735,18 +698,22 @@ async function loadStreams(trail) {
 
         const gauges = data.gauges || [];
         if (gauges.length === 0) {
-            document.getElementById('streamSummary').innerHTML = '<span class="muted">No gauges nearby</span>';
-            document.getElementById('streamBody').innerHTML = '<p class="muted">No USGS stream gauges found within range of this trail.</p>';
+            panel.innerHTML = `
+                <h2>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>
+                    Nearby Stream &amp; River Levels
+                </h2>
+                <p class="muted">No stream gauges found nearby</p>`;
             return;
         }
 
-        // Summary: show highest level gauge
-        const highest = gauges.reduce((a, b) => (a.gage_height || 0) > (b.gage_height || 0) ? a : b);
-        document.getElementById('streamSummary').innerHTML = 
-            `<span class="condition-badge-sm" style="background:${highest.gage_height_color}">${highest.gage_height_label}</span> <span style="font-size:0.82em;color:#666;">${gauges.length} gauge${gauges.length > 1 ? 's' : ''}</span>`;
+        let html = `
+            <h2>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>
+                Nearby Stream &amp; River Levels
+            </h2>
+            <div class="stream-gauges">`;
 
-        // Body: full gauge cards
-        let html = '<div class="stream-gauges">';
         for (const g of gauges) {
             const levelBar = g.gage_height != null ? Math.min(100, (g.gage_height / 10) * 100) : 0;
             html += `
@@ -762,20 +729,21 @@ async function loadStreams(trail) {
                     <div class="sg-bar-wrap"><div class="sg-bar" style="width:${levelBar}%;background:${g.gage_height_color}"></div></div>
                 </div>`;
         }
-        html += `</div><p class="muted" style="font-size:0.75rem;margin-top:8px;">Data from <a href="https://waterservices.usgs.gov" target="_blank">USGS National Water Information System</a></p>`;
-        document.getElementById('streamBody').innerHTML = html;
+
+        html += `</div>
+            <p class="muted" style="font-size:0.75rem;margin-top:8px;">Data from <a href="https://waterservices.usgs.gov" target="_blank">USGS National Water Information System</a></p>`;
+        panel.innerHTML = html;
     } catch(e) {
         console.error('Stream gauge error:', e);
-        const s = document.getElementById('streamSummary');
-        if (s) s.innerHTML = '<span class="muted">Unavailable</span>';
+        panel.querySelector('p').textContent = 'Unable to load stream data';
     }
 }
 
 // ═══ NPS Trail Alerts ═══
 async function loadAlerts(trail) {
-    if (!trail.lat || !trail.lon) {
-        const s = document.getElementById('alertsSummary');
-        if (s) s.innerHTML = '<span class="muted">N/A</span>';
+    const panel = document.getElementById('npsAlertsPanel');
+    if (!panel || !trail.lat || !trail.lon) {
+        if (panel) panel.querySelector('p').textContent = 'Location not available';
         return;
     }
     try {
@@ -784,11 +752,11 @@ async function loadAlerts(trail) {
         if (data.error) throw new Error(data.error);
 
         const alerts = data.alerts || [];
+        const alertIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
 
         if (alerts.length === 0) {
-            document.getElementById('alertsSummary').innerHTML = 
-                '<span style="color:#2d6a4f;font-weight:700;">No active alerts</span>';
-            document.getElementById('alertsBody').innerHTML = `
+            panel.innerHTML = `
+                <h2>${alertIcon} NPS Trail Alerts</h2>
                 <div class="nps-no-alerts">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     <span>No active alerts in this area</span>
@@ -796,17 +764,8 @@ async function loadAlerts(trail) {
             return;
         }
 
-        // Summary: count by severity
-        const dangers = alerts.filter(a => a.category === 'Danger' || a.category === 'Park Closure').length;
-        const cautions = alerts.filter(a => a.category === 'Caution').length;
-        let summaryParts = [];
-        if (dangers > 0) summaryParts.push(`<span class="condition-badge-sm" style="background:#c44536">${dangers} closure${dangers > 1 ? 's' : ''}</span>`);
-        if (cautions > 0) summaryParts.push(`<span class="condition-badge-sm" style="background:#e76f51">${cautions} caution${cautions > 1 ? 's' : ''}</span>`);
-        if (summaryParts.length === 0) summaryParts.push(`<span class="condition-badge-sm" style="background:#4a90d9">${alerts.length} alert${alerts.length > 1 ? 's' : ''}</span>`);
-        document.getElementById('alertsSummary').innerHTML = summaryParts.join(' ');
+        let html = `<h2>${alertIcon} NPS Trail Alerts</h2><div class="nps-alerts-list">`;
 
-        // Body: full alert cards
-        let html = '<div class="nps-alerts-list">';
         for (const a of alerts) {
             const catClass = a.category === 'Danger' || a.category === 'Park Closure' ? 'alert-danger' :
                              a.category === 'Caution' ? 'alert-caution' : 'alert-info';
@@ -822,12 +781,13 @@ async function loadAlerts(trail) {
                     ${a.url ? `<a href="${a.url}" target="_blank" class="nps-alert-link">More info</a>` : ''}
                 </div>`;
         }
-        html += `</div><p class="muted" style="font-size:0.75rem;margin-top:8px;">Data from <a href="https://www.nps.gov" target="_blank">National Park Service</a></p>`;
-        document.getElementById('alertsBody').innerHTML = html;
+
+        html += `</div>
+            <p class="muted" style="font-size:0.75rem;margin-top:8px;">Data from <a href="https://www.nps.gov" target="_blank">National Park Service</a></p>`;
+        panel.innerHTML = html;
     } catch(e) {
         console.error('NPS alerts error:', e);
-        const s = document.getElementById('alertsSummary');
-        if (s) s.innerHTML = '<span class="muted">Unavailable</span>';
+        panel.querySelector('p').textContent = 'Unable to load alerts';
     }
 }
 </script>
