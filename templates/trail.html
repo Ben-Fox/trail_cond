@@ -197,12 +197,12 @@ async function loadTrail() {
     const reportUrl = `/report?trail=${encodeURIComponent(trail.name)}&id=${OSM_TYPE}:${OSM_ID}`;
     html += `<div class="trail-action-buttons">
         <div class="trail-btn-wrap">
-            <a href="${reportUrl}" class="btn-hero-trail">Submit Full Report</a>
-            <p class="btn-note-trail">In-depth report to help the community know what to expect</p>
-        </div>
-        <div class="trail-btn-wrap">
             <button class="btn-hero-trail" id="openQuickLogTrail">Conditions Quick Log</button>
             <p class="btn-note-trail">Quickly report conditions and hazards in a few taps</p>
+        </div>
+        <div class="trail-btn-wrap">
+            <a href="${reportUrl}" class="btn-hero-trail">Submit Full Report</a>
+            <p class="btn-note-trail">In-depth report to help the community know what to expect</p>
         </div>
     </div>`;
     
