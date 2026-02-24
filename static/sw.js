@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trailcondish-v5';
+const CACHE_NAME = 'trailcondish-v6';
 const TILE_CACHE = 'trailcondish-tiles-v4';
 const API_CACHE = 'trailcondish-api-v1';
 const MAX_TILE_CACHE = 2000; // max cached tiles

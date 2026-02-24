@@ -15,9 +15,18 @@ function initCollapsible(panelId) {
     const h2 = panel.querySelector('h2');
     if (!h2 || h2.querySelector('.chevron')) return;
     h2.insertAdjacentHTML('beforeend', CHEVRON_SVG);
-    h2.addEventListener('click', function() {
+    
+    function togglePanel(e) {
+        e.preventDefault();
+        e.stopPropagation();
         panel.classList.toggle('collapsed');
-    });
+    }
+    h2.addEventListener('click', togglePanel);
+    h2.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        togglePanel(e);
+    }, {passive: false});
+    
     // Start collapsed
     panel.classList.add('collapsed');
 }
