@@ -16,16 +16,29 @@ function initCollapsible(panelId) {
     if (!h2 || h2.querySelector('.chevron')) return;
     h2.insertAdjacentHTML('beforeend', CHEVRON_SVG);
     
-    function togglePanel(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        panel.classList.toggle('collapsed');
-    }
-    h2.addEventListener('click', togglePanel);
+    // Track touch start position to distinguish taps from scrolls
+    let touchStartY = null;
+    h2.addEventListener('touchstart', function(e) {
+        touchStartY = e.touches[0].clientY;
+    }, {passive: true});
+    
     h2.addEventListener('touchend', function(e) {
-        e.preventDefault();
-        togglePanel(e);
+        if (touchStartY === null) return;
+        const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+        touchStartY = null;
+        // Only toggle if finger moved less than 10px (a real tap, not a scroll)
+        if (dy < 10) {
+            e.preventDefault();
+            panel.classList.toggle('collapsed');
+        }
     }, {passive: false});
+    
+    // Desktop click still works normally
+    h2.addEventListener('click', function(e) {
+        // Avoid double-fire on touch devices (touchend already handled it)
+        if (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
+        panel.classList.toggle('collapsed');
+    });
     
     // Start collapsed
     panel.classList.add('collapsed');
