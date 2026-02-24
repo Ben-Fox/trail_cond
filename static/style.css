@@ -404,6 +404,7 @@ body {
     gap: 1.5rem;
     margin: 1.5rem 0;
     overflow: hidden;
+    align-items: start;
 }
 @media (max-width: 768px) {
     .conditions-dual { grid-template-columns: 1fr; }
@@ -416,6 +417,10 @@ body {
     border-top: 4px solid var(--green);
     overflow: hidden;
     min-width: 0;
+    transition: padding 0.2s ease;
+}
+.condition-panel.collapsed {
+    padding-bottom: 1rem;
 }
 .condition-panel h2 {
     display: flex;
