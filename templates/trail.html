@@ -127,32 +127,6 @@ async function loadTrail() {
         </div>`;
     }
     
-    // === WATER CROSSINGS ===
-    if (trail.water_crossings && trail.water_crossings.length > 0) {
-        const fords = trail.water_crossings.filter(c => c.type === 'ford');
-        const bridges = trail.water_crossings.filter(c => c.type === 'bridge');
-        html += `<div class="water-crossings-banner">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>
-            <span>`;
-        const parts = [];
-        if (bridges.length > 0) parts.push(`${bridges.length} bridge${bridges.length > 1 ? 's' : ''}`);
-        if (fords.length > 0) parts.push(`<strong>${fords.length} water ford${fords.length > 1 ? 's' : ''}</strong> (in-water crossing)`);
-        html += parts.join(' · ');
-        html += `</span></div>`;
-
-        // Detail cards for fords (important for hikers to know)
-        if (fords.length > 0) {
-            html += `<div class="crossing-cards">`;
-            fords.forEach(f => {
-                html += `<div class="crossing-card ford">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c44536" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><line x1="7" y1="1" x2="7" y2="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="17" y1="1" x2="17" y2="5"/></svg>
-                    <span>Water Ford${f.name ? ': ' + f.name : ''}${f.depth ? ' · Depth: ' + f.depth : ''}</span>
-                </div>`;
-            });
-            html += `</div>`;
-        }
-    }
-    
     // === TRAIL SEGMENTS ===
     if (trail.segments && trail.segments.length > 1) {
         html += `<div class="section-block trail-segments">
@@ -230,13 +204,13 @@ async function loadTrail() {
     // === STREAM GAUGES & NPS ALERTS — side by side ===
     html += `<div class="conditions-dual" style="margin-top:0;">`;
 
-    // Stream/River Crossings
+    // Water Crossings & Stream Levels
     html += `<div class="condition-panel" id="streamGaugesPanel">
         <h2>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>
-            Nearby Stream &amp; River Levels
+            Water Crossings &amp; Stream Levels
         </h2>
-        <p class="muted">Loading stream data...</p>
+        <p class="muted">Loading water data...</p>
     </div>`;
 
     // NPS Alerts
@@ -760,10 +734,58 @@ loadTrail().catch(e => console.error('loadTrail uncaught:', e)).then(() => {
 // ═══ Stream/River Gauges ═══
 async function loadStreams(trail) {
     const panel = document.getElementById('streamGaugesPanel');
-    if (!panel || !trail.lat || !trail.lon) {
-        if (panel) panel.querySelector('p').textContent = 'Location not available';
+    if (!panel) return;
+
+    const waterIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>`;
+    const crossings = trail.water_crossings || [];
+    const fords = crossings.filter(c => c.type === 'ford');
+    const bridges = crossings.filter(c => c.type === 'bridge');
+    const hasCrossings = crossings.length > 0;
+
+    let html = `<h2>${waterIcon} Water Crossings &amp; Stream Levels</h2>`;
+
+    // Water crossings section
+    if (hasCrossings) {
+        // Summary banner
+        const cParts = [];
+        if (bridges.length > 0) cParts.push(`${bridges.length} bridge${bridges.length > 1 ? 's' : ''}`);
+        if (fords.length > 0) cParts.push(`<strong>${fords.length} water ford${fords.length > 1 ? 's' : ''}</strong> (in-water crossing)`);
+        html += `<div class="crossings-summary">${cParts.join(' · ')}</div>`;
+
+        // Ford detail cards
+        if (fords.length > 0) {
+            html += `<div class="crossing-cards">`;
+            fords.forEach(f => {
+                html += `<div class="crossing-card ford">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c44536" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><line x1="7" y1="1" x2="7" y2="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="17" y1="1" x2="17" y2="5"/></svg>
+                    <span>Water Ford${f.name ? ': ' + f.name : ''}${f.depth ? ' · Depth: ' + f.depth : ''}</span>
+                </div>`;
+            });
+            html += `</div>`;
+        }
+
+        // Bridge cards
+        if (bridges.length > 0) {
+            html += `<div class="crossing-cards">`;
+            bridges.forEach(b => {
+                html += `<div class="crossing-card bridge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1565c0" stroke-width="2"><path d="M4 10h16M4 14h16"/><path d="M6 10V6M10 10V4M14 10V4M18 10V6"/><path d="M2 18l4-4M22 18l-4-4"/></svg>
+                    <span>Bridge${b.name ? ': ' + b.name : ''}${b.material ? ' · ' + b.material : ''}</span>
+                </div>`;
+            });
+            html += `</div>`;
+        }
+    } else {
+        html += `<p class="muted" style="margin-bottom:12px;">No bridges or fords detected on this trail</p>`;
+    }
+
+    // Stream gauges section
+    if (!trail.lat || !trail.lon) {
+        html += `<p class="muted">Location not available for stream data</p>`;
+        panel.innerHTML = html;
         return;
     }
+
     try {
         const res = await fetch(`/api/streams?lat=${trail.lat.toFixed(4)}&lon=${trail.lon.toFixed(4)}`);
         const data = await res.json();
@@ -771,44 +793,33 @@ async function loadStreams(trail) {
 
         const gauges = data.gauges || [];
         if (gauges.length === 0) {
-            panel.innerHTML = `
-                <h2>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>
-                    Nearby Stream &amp; River Levels
-                </h2>
-                <p class="muted">No stream gauges found nearby</p>`;
-            return;
+            html += `<p class="muted">No USGS stream gauges found nearby</p>`;
+        } else {
+            html += `<h3 style="font-size:1rem;color:var(--brown);margin:16px 0 8px 0;">Nearby Stream Gauges</h3>`;
+            html += `<div class="stream-gauges">`;
+            for (const g of gauges) {
+                const levelBar = g.gage_height != null ? Math.min(100, (g.gage_height / 10) * 100) : 0;
+                html += `
+                    <div class="stream-gauge-card">
+                        <div class="sg-header">
+                            <span class="sg-name">${g.name}</span>
+                            <span class="sg-level-badge" style="background:${g.gage_height_color}">${g.gage_height_label}</span>
+                        </div>
+                        <div class="sg-stats">
+                            ${g.gage_height != null ? `<div class="sg-stat"><span class="sg-stat-label">Water Level</span><span class="sg-stat-value">${g.gage_height} ft</span></div>` : ''}
+                            ${g.streamflow != null ? `<div class="sg-stat"><span class="sg-stat-label">Flow Rate</span><span class="sg-stat-value">${g.streamflow} ft³/s · ${g.streamflow_label}</span></div>` : ''}
+                        </div>
+                        <div class="sg-bar-wrap"><div class="sg-bar" style="width:${levelBar}%;background:${g.gage_height_color}"></div></div>
+                    </div>`;
+            }
+            html += `</div>`;
         }
-
-        let html = `
-            <h2>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/></svg>
-                Nearby Stream &amp; River Levels
-            </h2>
-            <div class="stream-gauges">`;
-
-        for (const g of gauges) {
-            const levelBar = g.gage_height != null ? Math.min(100, (g.gage_height / 10) * 100) : 0;
-            html += `
-                <div class="stream-gauge-card">
-                    <div class="sg-header">
-                        <span class="sg-name">${g.name}</span>
-                        <span class="sg-level-badge" style="background:${g.gage_height_color}">${g.gage_height_label}</span>
-                    </div>
-                    <div class="sg-stats">
-                        ${g.gage_height != null ? `<div class="sg-stat"><span class="sg-stat-label">Water Level</span><span class="sg-stat-value">${g.gage_height} ft</span></div>` : ''}
-                        ${g.streamflow != null ? `<div class="sg-stat"><span class="sg-stat-label">Flow Rate</span><span class="sg-stat-value">${g.streamflow} ft³/s · ${g.streamflow_label}</span></div>` : ''}
-                    </div>
-                    <div class="sg-bar-wrap"><div class="sg-bar" style="width:${levelBar}%;background:${g.gage_height_color}"></div></div>
-                </div>`;
-        }
-
-        html += `</div>
-            <p class="muted" style="font-size:0.75rem;margin-top:8px;">Data from <a href="https://waterservices.usgs.gov" target="_blank">USGS National Water Information System</a></p>`;
+        html += `<p class="muted" style="font-size:0.75rem;margin-top:8px;">Stream data from <a href="https://waterservices.usgs.gov" target="_blank">USGS NWIS</a> · Crossings from <a href="https://www.openstreetmap.org" target="_blank">OpenStreetMap</a></p>`;
         panel.innerHTML = html;
     } catch(e) {
         console.error('Stream gauge error:', e);
-        panel.querySelector('p').textContent = 'Unable to load stream data';
+        html += `<p class="muted">Unable to load stream gauge data</p>`;
+        panel.innerHTML = html;
     }
 }
 

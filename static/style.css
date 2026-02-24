@@ -1327,6 +1327,19 @@ body {
     color: #c44536;
     border: 1px solid #ffccbc;
 }
+.crossing-card.bridge {
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #bbdefb;
+}
+.crossings-summary {
+    font-size: 0.9rem;
+    color: var(--text);
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    background: var(--sand);
+    border-radius: 6px;
+}
 
 /* === Trail Segments === */
 .trail-segments { margin-top: 1.5rem; }
