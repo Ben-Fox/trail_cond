@@ -65,8 +65,6 @@
         <p>Powered by <strong>Open-Meteo</strong>, <strong>OpenStreetMap</strong>, and <strong>Waymarked Trails</strong></p>
     </div>
 </section>
-{% endblock %}
-{% block scripts %}
 <!-- Hazard Tag Modal -->
 <div class="hazard-modal-overlay" id="hazardModal" style="display:none;">
     <div class="hazard-modal">
@@ -87,6 +85,8 @@
         <button class="hazard-cancel" id="hazardCancel">Cancel</button>
     </div>
 </div>
+{% endblock %}
+{% block scripts %}
 <script>
 const hazModal = document.getElementById('hazardModal');
 document.getElementById('openHazardTag').addEventListener('click', function() {
