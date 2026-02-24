@@ -1300,6 +1300,34 @@ body {
 }
 .trailhead-badge svg { flex-shrink: 0; stroke: #2e7d32; }
 
+/* === Water Crossings === */
+.water-crossings-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: #e3f2fd;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+    color: #1565c0;
+}
+.water-crossings-banner svg { flex-shrink: 0; stroke: #1565c0; }
+.crossing-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.crossing-card {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+.crossing-card.ford {
+    background: #fbe9e7;
+    color: #c44536;
+    border: 1px solid #ffccbc;
+}
+
 /* === Trail Segments === */
 .trail-segments { margin-top: 1.5rem; }
 .segments-list {

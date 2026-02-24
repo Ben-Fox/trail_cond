@@ -329,11 +329,68 @@ out center tags;'''
             except Exception:
                 return {}
 
-        # Fire all three in parallel
+        def _crossings_task():
+            """Detect bridges and fords along the trail."""
+            crossings = []
+            if not geometry or len(geometry) < 2:
+                return crossings
+            try:
+                # Sample up to 10 points along the trail for the query
+                step = max(1, len(geometry) // 10)
+                sample_pts = [geometry[i] for i in range(0, len(geometry), step)]
+                if geometry[-1] not in sample_pts:
+                    sample_pts.append(geometry[-1])
+
+                # Build around-line filter using sampled points
+                # Query for bridges and fords within 30m of trail points
+                around_sets = []
+                for pt in sample_pts[:10]:
+                    around_sets.append(f'node(around:30,{pt["lat"]},{pt["lon"]})["ford"];')
+                    around_sets.append(f'way(around:30,{pt["lat"]},{pt["lon"]})["ford"];')
+                    around_sets.append(f'way(around:30,{pt["lat"]},{pt["lon"]})["bridge"]["bridge"!="no"];')
+                    around_sets.append(f'node(around:30,{pt["lat"]},{pt["lon"]})["bridge"]["bridge"!="no"];')
+
+                q = f'''[out:json][timeout:10];
+({chr(10).join(around_sets)});
+out center tags;'''
+                data = overpass_query(q)
+                seen = set()
+                for el in data.get('elements', []):
+                    tags = el.get('tags', {})
+                    el_id = el.get('id')
+                    if el_id in seen:
+                        continue
+                    seen.add(el_id)
+
+                    c_lat = el.get('lat') or (el.get('center', {}).get('lat'))
+                    c_lon = el.get('lon') or (el.get('center', {}).get('lon'))
+
+                    if tags.get('ford') and tags['ford'] != 'no':
+                        crossings.append({
+                            'type': 'ford',
+                            'name': tags.get('name', ''),
+                            'lat': c_lat,
+                            'lon': c_lon,
+                            'depth': tags.get('depth', ''),
+                        })
+                    elif tags.get('bridge') and tags['bridge'] != 'no':
+                        crossings.append({
+                            'type': 'bridge',
+                            'name': tags.get('name', ''),
+                            'lat': c_lat,
+                            'lon': c_lon,
+                            'material': tags.get('material', tags.get('bridge:structure', '')),
+                        })
+            except Exception:
+                pass
+            return crossings
+
+        # Fire all four in parallel
         futures = {
             _executor.submit(_trailhead_task): 'trailhead',
             _executor.submit(_usgs_task): 'usgs',
             _executor.submit(_location_task): 'location',
+            _executor.submit(_crossings_task): 'crossings',
         }
 
         has_trailhead = False
@@ -347,9 +404,13 @@ out center tags;'''
                     result.update(future.result())
                 elif key == 'location':
                     result['location'] = future.result()
+                elif key == 'crossings':
+                    result['water_crossings'] = future.result()
             except Exception:
                 if key == 'location':
                     result['location'] = {}
+                elif key == 'crossings':
+                    result['water_crossings'] = []
 
         result['has_trailhead'] = has_trailhead
         result['access_trail'] = access_trail
