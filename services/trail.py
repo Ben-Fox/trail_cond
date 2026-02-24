@@ -12,6 +12,98 @@ _executor = ThreadPoolExecutor(max_workers=4)
 trail_bp = Blueprint('trail', __name__)
 
 
+def _pt_dist_m(p1, p2):
+    """Distance in meters between two {lat, lon} dicts."""
+    r = 6371000
+    dlat = radians(p2['lat'] - p1['lat'])
+    dlon = radians(p2['lon'] - p1['lon'])
+    a = sin(dlat/2)**2 + cos(radians(p1['lat']))*cos(radians(p2['lat']))*sin(dlon/2)**2
+    return r * 2 * atan2(sqrt(a), sqrt(1-a))
+
+
+def _stitch_ways(way_geometries):
+    """Stitch multiple way geometries into a continuous line.
+    
+    Each way geometry is a list of {lat, lon} points. Ways connect when 
+    one's endpoint is near another's endpoint (shared OSM node = exact match,
+    but we use 15m tolerance for floating point / split nodes).
+    
+    Algorithm:
+    1. Start with the first way as the "chain"
+    2. Repeatedly find the unplaced way whose endpoint is closest to 
+       either end of the chain
+    3. Append/prepend (reversing if needed) to grow the chain
+    4. If no way connects within tolerance, start a new chain segment
+    """
+    if not way_geometries:
+        return []
+    if len(way_geometries) == 1:
+        return way_geometries[0]
+
+    CONNECT_THRESHOLD_M = 15  # meters — shared nodes should be <1m, allow slack
+
+    remaining = [list(g) for g in way_geometries]
+    # Start chain with the first way
+    chain = remaining.pop(0)
+
+    max_iterations = len(remaining) * 2  # safety valve
+    iterations = 0
+    while remaining and iterations < max_iterations:
+        iterations += 1
+        chain_start = chain[0]
+        chain_end = chain[-1]
+        
+        best_idx = None
+        best_dist = float('inf')
+        best_mode = None  # 'append', 'append_rev', 'prepend', 'prepend_rev'
+
+        for i, seg in enumerate(remaining):
+            if len(seg) < 2:
+                continue
+            seg_start = seg[0]
+            seg_end = seg[-1]
+
+            # Can this segment attach to the END of the chain?
+            d_end_start = _pt_dist_m(chain_end, seg_start)  # chain_end → seg_start (append as-is)
+            d_end_end = _pt_dist_m(chain_end, seg_end)      # chain_end → seg_end (append reversed)
+            # Can this segment attach to the START of the chain?
+            d_start_end = _pt_dist_m(chain_start, seg_end)  # seg_end → chain_start (prepend as-is)
+            d_start_start = _pt_dist_m(chain_start, seg_start)  # seg_start → chain_start (prepend reversed)
+
+            candidates = [
+                (d_end_start, 'append', i),
+                (d_end_end, 'append_rev', i),
+                (d_start_end, 'prepend', i),
+                (d_start_start, 'prepend_rev', i),
+            ]
+            for d, mode, idx in candidates:
+                if d < best_dist:
+                    best_dist = d
+                    best_idx = idx
+                    best_mode = mode
+
+        if best_idx is None or best_dist > CONNECT_THRESHOLD_M:
+            # No connecting segment found within threshold — 
+            # just append remaining segments with a gap
+            for seg in remaining:
+                chain.extend(seg)
+            break
+
+        seg = remaining.pop(best_idx)
+        if best_mode == 'append':
+            chain.extend(seg[1:])  # skip first point (duplicate of chain end)
+        elif best_mode == 'append_rev':
+            seg.reverse()
+            chain.extend(seg[1:])
+        elif best_mode == 'prepend':
+            chain = seg + chain[1:]  # skip first point of old chain (dup of seg end)
+        elif best_mode == 'prepend_rev':
+            seg.reverse()
+            chain = seg + chain[1:]
+
+    return chain
+
+
 def _reverse_geocode(lat, lon):
     """Get nearest city/town + state via Nominatim, and check for public land via Overpass."""
     location = {}
@@ -143,14 +235,23 @@ out geom tags;'''
 
         geometry = []
         if osm_type == 'way':
+            way_geos = []
             for seg in elements:
                 if 'geometry' in seg:
-                    seg_pts = [{'lat': p['lat'], 'lon': p['lon']} for p in seg['geometry']]
-                    geometry.extend(seg_pts)
+                    way_geos.append([{'lat': p['lat'], 'lon': p['lon']} for p in seg['geometry']])
+            if len(way_geos) > 1:
+                geometry = _stitch_ways(way_geos)
+            elif way_geos:
+                geometry = way_geos[0]
         elif osm_type == 'relation':
+            way_geos = []
             for way in way_els:
                 if 'geometry' in way:
-                    geometry.extend([{'lat': p['lat'], 'lon': p['lon']} for p in way['geometry']])
+                    way_geos.append([{'lat': p['lat'], 'lon': p['lon']} for p in way['geometry']])
+            if len(way_geos) > 1:
+                geometry = _stitch_ways(way_geos)
+            elif way_geos:
+                geometry = way_geos[0]
 
         lat = lon = None
         if geometry:
