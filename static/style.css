@@ -1415,3 +1415,74 @@ body {
     padding-left: 1.25rem;
     flex-wrap: wrap;
 }
+
+/* === Hazard Tag Modal === */
+.hazard-modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.hazard-modal {
+    background: white;
+    border-radius: 16px;
+    padding: 2rem;
+    max-width: 400px;
+    width: 100%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.hazard-modal h2 {
+    font-size: 1.4rem;
+    color: var(--green);
+    margin-bottom: 0.25rem;
+}
+.hazard-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 1.25rem 0;
+}
+.hazard-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 2px solid var(--sand);
+    border-radius: 12px;
+    background: var(--cream);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.2s, background 0.2s;
+}
+.hazard-option:hover, .hazard-option:active {
+    border-color: var(--green);
+    background: #eaf5ee;
+}
+.hazard-option svg { flex-shrink: 0; }
+.hazard-option span {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+    display: block;
+}
+.hazard-option small {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    display: block;
+    margin-top: 2px;
+}
+.hazard-cancel {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    background: none;
+    color: var(--text-light);
+    font-size: 0.95rem;
+    cursor: pointer;
+    border-radius: 8px;
+}
+.hazard-cancel:hover { background: var(--sand); }

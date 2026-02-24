@@ -11,8 +11,12 @@
                 <p class="btn-note">Search and view trails, conditions, and forecasts</p>
             </div>
             <div class="hero-btn-wrap">
-                <button class="btn btn-hero" id="openQuickLog">Conditions Quick Log</button>
-                <p class="btn-note">Quickly report conditions and hazards in a few taps</p>
+                <button class="btn btn-hero" id="openHazardTag">Tag Location Of Hazard</button>
+                <p class="btn-note">Pin a spot hazard or road condition to alert other hikers</p>
+            </div>
+            <div class="hero-btn-wrap">
+                <a href="/report" class="btn btn-hero">Conditions Quick Log</a>
+                <p class="btn-note">Quickly report trail conditions in a few taps</p>
             </div>
             <div class="hero-btn-wrap">
                 <a href="/report" class="btn btn-hero">Submit Full Report</a>
@@ -63,9 +67,44 @@
 </section>
 {% endblock %}
 {% block scripts %}
+<!-- Hazard Tag Modal -->
+<div class="hazard-modal-overlay" id="hazardModal" style="display:none;">
+    <div class="hazard-modal">
+        <h2>Tag Location Of Hazard</h2>
+        <p class="muted">What would you like to report?</p>
+        <div class="hazard-options">
+            <button class="hazard-option" id="hazOptSpot">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--brown)" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span>Spot Hazard</span>
+                <small>Fallen tree, washout, wildlife, flooding, etc.</small>
+            </button>
+            <button class="hazard-option" id="hazOptRoad">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--brown)" stroke-width="2" stroke-linecap="round"><path d="M4 20L10 4M14 20L20 4"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="5.5" y1="16" x2="18.5" y2="16"/></svg>
+                <span>Road Condition</span>
+                <small>Access road closures, rough conditions, snow on road</small>
+            </button>
+        </div>
+        <button class="hazard-cancel" id="hazardCancel">Cancel</button>
+    </div>
+</div>
 <script>
-document.getElementById('openQuickLog').addEventListener('click', function() {
-    document.getElementById('quickLogFab').click();
+const hazModal = document.getElementById('hazardModal');
+document.getElementById('openHazardTag').addEventListener('click', function() {
+    hazModal.style.display = 'flex';
+});
+document.getElementById('hazardCancel').addEventListener('click', function() {
+    hazModal.style.display = 'none';
+});
+hazModal.addEventListener('click', function(e) {
+    if (e.target === hazModal) hazModal.style.display = 'none';
+});
+document.getElementById('hazOptSpot').addEventListener('click', function() {
+    hazModal.style.display = 'none';
+    window.location = '/report?type=hazard';
+});
+document.getElementById('hazOptRoad').addEventListener('click', function() {
+    hazModal.style.display = 'none';
+    window.location = '/report?type=road';
 });
 </script>
 {% endblock %}
