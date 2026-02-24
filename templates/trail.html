@@ -778,9 +778,12 @@ loadTrail().catch(e => console.error('loadTrail uncaught:', e)).then(() => {
     const qlBtn = document.getElementById('openQuickLogTrail');
     if (qlBtn) {
         qlBtn.addEventListener('click', function() {
-            // TODO: open Quick Log modal when built; for now go to report page
-            const reportUrl = `/report?trail=${encodeURIComponent(document.querySelector('h1')?.textContent || '')}&id=${REPORT_KEY}`;
-            window.location = reportUrl;
+            const fab = document.getElementById('quickLogFab');
+            if (fab) fab.click();
+            setTimeout(() => {
+                const btn = document.querySelector('.ql-option-btn[data-type="trail_condition"]');
+                if (btn) btn.click();
+            }, 100);
         });
     }
 });

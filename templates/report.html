@@ -195,7 +195,8 @@ searchInput.addEventListener('input', function() {
                         searchInput.placeholder = 'Searching trails...';
                         try {
                             const sres = await fetch(`/api/search?q=${encodeURIComponent(name)}`);
-                            const trails = await sres.json();
+                            const raw = await sres.json();
+                            const trails = Array.isArray(raw) ? raw : (raw.trails || []);
                             if (trails.length) {
                                 suggestionsDiv.innerHTML = trails.slice(0, 15).map(t => `
                                     <div class="suggestion" data-type="trail" data-osm-type="${t.osm_type}" data-osm-id="${t.osm_id}" data-name="${t.name}">
