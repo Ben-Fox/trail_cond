@@ -1,5 +1,5 @@
 from math import radians, sin, cos, sqrt, atan2
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from flask import Blueprint, request, jsonify
 
 from services.cache import cached_response, cache_response
@@ -517,22 +517,29 @@ out center tags;'''
 
         has_trailhead = False
         access_trail = None
-        for future in as_completed(futures, timeout=15):
-            key = futures[future]
-            try:
-                if key == 'trailhead':
-                    has_trailhead, access_trail = future.result()
-                elif key == 'usgs':
-                    result.update(future.result())
-                elif key == 'location':
-                    result['location'] = future.result()
-                elif key == 'crossings':
-                    result['water_crossings'] = future.result()
-            except Exception:
-                if key == 'location':
-                    result['location'] = {}
-                elif key == 'crossings':
-                    result['water_crossings'] = []
+        result['location'] = {}
+        result['water_crossings'] = []
+
+        try:
+            for future in as_completed(futures, timeout=20):
+                key = futures[future]
+                try:
+                    if key == 'trailhead':
+                        has_trailhead, access_trail = future.result()
+                    elif key == 'usgs':
+                        result.update(future.result())
+                    elif key == 'location':
+                        result['location'] = future.result()
+                    elif key == 'crossings':
+                        result['water_crossings'] = future.result()
+                except Exception:
+                    pass  # Individual task failed, skip it
+        except TimeoutError:
+            pass  # Some tasks didn't finish in time, use what we got
+        finally:
+            # Cancel any still-running futures
+            for future in futures:
+                future.cancel()
 
         result['has_trailhead'] = has_trailhead
         result['access_trail'] = access_trail
