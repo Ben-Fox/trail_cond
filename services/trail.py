@@ -395,13 +395,8 @@ out center tags;'''
                     for existing in crossings:
                         if existing['type'] != c['type']:
                             continue
-                        dist = _dist_m(existing['lat'], existing['lon'], c['lat'], c['lon'])
-                        # Same spot (<30m) = same crossing
-                        # Same name within 200m = same crossing
-                        if dist < 30:
-                            is_dup = True
-                            break
-                        if dist < 200 and c['name'] and existing['name'] and c['name'] == existing['name']:
+                        # Only dedup if literally the same spot (<30m)
+                        if _dist_m(existing['lat'], existing['lon'], c['lat'], c['lon']) < 30:
                             is_dup = True
                             break
                     if not is_dup:
