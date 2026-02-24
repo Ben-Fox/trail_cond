@@ -1,10 +1,13 @@
 from math import radians, sin, cos, sqrt, atan2
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Blueprint, request, jsonify
 
 from services.cache import cached_response, cache_response
 from services.overpass import overpass_query, CACHE_TTL
 from services.usgs import usgs_query_bbox
 from services import http_session
+
+_executor = ThreadPoolExecutor(max_workers=4)
 
 trail_bp = Blueprint('trail', __name__)
 
@@ -198,54 +201,8 @@ out geom tags;'''
         }
 
         trail_segments = []
-        access_trail = None
-        has_trailhead = False
 
-        if geometry and len(geometry) > 1:
-            start_pt = geometry[0]
-            end_pt = geometry[-1]
-
-            try:
-                th_query = f'''[out:json][timeout:10];
-(
-  way(around:50,{start_pt['lat']},{start_pt['lon']})["highway"~"^(residential|tertiary|secondary|primary|trunk|service|unclassified|track)$"];
-  node(around:100,{start_pt['lat']},{start_pt['lon']})["amenity"="parking"];
-  node(around:100,{start_pt['lat']},{start_pt['lon']})["highway"="trailhead"];
-  way(around:50,{end_pt['lat']},{end_pt['lon']})["highway"~"^(residential|tertiary|secondary|primary|trunk|service|unclassified|track)$"];
-  node(around:100,{end_pt['lat']},{end_pt['lon']})["amenity"="parking"];
-  node(around:100,{end_pt['lat']},{end_pt['lon']})["highway"="trailhead"];
-);
-out tags 5;'''
-                th_data = overpass_query(th_query)
-                th_elements = th_data.get('elements', [])
-                has_trailhead = len(th_elements) > 0
-
-                if not has_trailhead:
-                    conn_query = f'''[out:json][timeout:10];
-(
-  way(around:30,{start_pt['lat']},{start_pt['lon']})["highway"~"^(path|footway|track|bridleway|cycleway)$"]["name"];
-  way(around:30,{end_pt['lat']},{end_pt['lon']})["highway"~"^(path|footway|track|bridleway|cycleway)$"]["name"];
-);
-out center tags;'''
-                    conn_data = overpass_query(conn_query)
-                    conn_els = conn_data.get('elements', [])
-                    trail_name_lower = result['name'].lower().strip()
-                    for ce in conn_els:
-                        ce_name = ce.get('tags', {}).get('name', '').strip()
-                        if ce_name and ce_name.lower() != trail_name_lower:
-                            ce_lat = ce.get('center', {}).get('lat')
-                            ce_lon = ce.get('center', {}).get('lon')
-                            access_trail = {
-                                'name': ce_name,
-                                'osm_type': 'way',
-                                'osm_id': ce['id'],
-                                'lat': ce_lat,
-                                'lon': ce_lon,
-                            }
-                            break
-            except Exception:
-                pass
-
+        # Build segments from multi-way trails
         if osm_type == 'way' and extra_way_ids:
             for seg in elements:
                 if 'geometry' not in seg:
@@ -297,39 +254,105 @@ out center tags;'''
                     'geometry': seg_geo,
                 })
 
-        result['has_trailhead'] = has_trailhead
-        result['access_trail'] = access_trail
         result['segments'] = trail_segments if len(trail_segments) > 1 else []
 
-        # Reverse geocode for location context
-        if lat and lon:
+        # === Run trailhead detection, reverse geocode, and USGS enrichment in PARALLEL ===
+        def _trailhead_task():
+            """Detect trailhead access or connecting trail."""
+            _has_trailhead = False
+            _access_trail = None
+            if not geometry or len(geometry) <= 1:
+                return _has_trailhead, _access_trail
+            start_pt = geometry[0]
+            end_pt = geometry[-1]
             try:
-                loc = _reverse_geocode(lat, lon)
-                result['location'] = loc
+                th_query = f'''[out:json][timeout:10];
+(
+  way(around:50,{start_pt['lat']},{start_pt['lon']})["highway"~"^(residential|tertiary|secondary|primary|trunk|service|unclassified|track)$"];
+  node(around:100,{start_pt['lat']},{start_pt['lon']})["amenity"="parking"];
+  node(around:100,{start_pt['lat']},{start_pt['lon']})["highway"="trailhead"];
+  way(around:50,{end_pt['lat']},{end_pt['lon']})["highway"~"^(residential|tertiary|secondary|primary|trunk|service|unclassified|track)$"];
+  node(around:100,{end_pt['lat']},{end_pt['lon']})["amenity"="parking"];
+  node(around:100,{end_pt['lat']},{end_pt['lon']})["highway"="trailhead"];
+);
+out tags 5;'''
+                th_data = overpass_query(th_query)
+                _has_trailhead = len(th_data.get('elements', [])) > 0
+                if not _has_trailhead:
+                    conn_query = f'''[out:json][timeout:10];
+(
+  way(around:30,{start_pt['lat']},{start_pt['lon']})["highway"~"^(path|footway|track|bridleway|cycleway)$"]["name"];
+  way(around:30,{end_pt['lat']},{end_pt['lon']})["highway"~"^(path|footway|track|bridleway|cycleway)$"]["name"];
+);
+out center tags;'''
+                    conn_data = overpass_query(conn_query)
+                    trail_name_lower = result['name'].lower().strip()
+                    for ce in conn_data.get('elements', []):
+                        ce_name = ce.get('tags', {}).get('name', '').strip()
+                        if ce_name and ce_name.lower() != trail_name_lower:
+                            _access_trail = {
+                                'name': ce_name, 'osm_type': 'way', 'osm_id': ce['id'],
+                                'lat': ce.get('center', {}).get('lat'),
+                                'lon': ce.get('center', {}).get('lon'),
+                            }
+                            break
             except Exception:
-                result['location'] = {}
+                pass
+            return _has_trailhead, _access_trail
 
-        if lat and lon:
+        def _usgs_task():
+            """Enrich trail with USGS data."""
+            enrichment = {}
+            if not lat or not lon:
+                return enrichment
             try:
                 usgs_trails = usgs_query_bbox(lat - 0.05, lon - 0.05, lat + 0.05, lon + 0.05)
                 trail_name = result['name'].strip().lower()
                 for ut in usgs_trails:
                     uname = ut['name'].strip().lower()
                     if uname and (uname in trail_name or trail_name in uname):
-                        if ut.get('length_miles'):
-                            result['length_miles'] = ut['length_miles']
-                        if ut.get('activities'):
-                            result['activities'] = ut['activities']
-                        if ut.get('maintainer'):
-                            result['maintainer'] = ut['maintainer']
-                        if ut.get('usgs_trail_type'):
-                            result['usgs_trail_type'] = ut['usgs_trail_type']
-                        if ut.get('designation'):
-                            result['designation'] = ut['designation']
-                        result['usgs_enriched'] = True
+                        for k in ('length_miles', 'activities', 'maintainer', 'usgs_trail_type', 'designation'):
+                            if ut.get(k):
+                                enrichment[k] = ut[k]
+                        enrichment['usgs_enriched'] = True
                         break
             except Exception:
                 pass
+            return enrichment
+
+        def _location_task():
+            """Reverse geocode for location context."""
+            if not lat or not lon:
+                return {}
+            try:
+                return _reverse_geocode(lat, lon)
+            except Exception:
+                return {}
+
+        # Fire all three in parallel
+        futures = {
+            _executor.submit(_trailhead_task): 'trailhead',
+            _executor.submit(_usgs_task): 'usgs',
+            _executor.submit(_location_task): 'location',
+        }
+
+        has_trailhead = False
+        access_trail = None
+        for future in as_completed(futures, timeout=15):
+            key = futures[future]
+            try:
+                if key == 'trailhead':
+                    has_trailhead, access_trail = future.result()
+                elif key == 'usgs':
+                    result.update(future.result())
+                elif key == 'location':
+                    result['location'] = future.result()
+            except Exception:
+                if key == 'location':
+                    result['location'] = {}
+
+        result['has_trailhead'] = has_trailhead
+        result['access_trail'] = access_trail
 
         cache_response(cache_key, result)
         return jsonify(result)
