@@ -7,6 +7,21 @@
 {% endblock %}
 {% block scripts %}
 <script>
+const CHEVRON_SVG = '<svg class="chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
+function initCollapsible(panelId) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    const h2 = panel.querySelector('h2');
+    if (!h2 || h2.querySelector('.chevron')) return;
+    h2.insertAdjacentHTML('beforeend', CHEVRON_SVG);
+    h2.addEventListener('click', function() {
+        panel.classList.toggle('collapsed');
+    });
+    // Start collapsed
+    panel.classList.add('collapsed');
+}
+
 const OSM_TYPE = '{{ osm_type }}';
 const OSM_ID = '{{ osm_id }}';
 const FID = `${OSM_TYPE}/${OSM_ID}`;
@@ -173,12 +188,18 @@ async function loadTrail() {
     html += `<div class="conditions-dual">`;
     
     // Left: Community-based conditions
+    const commSummary = reports && reports.length ? 
+        `${reports[0].trail_condition || 'Unknown'} · ${reports.length} report${reports.length !== 1 ? 's' : ''}` : 
+        'No reports yet';
     html += `<div class="condition-panel" id="communityConditions">
         <h2>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             Trail Conditions Based On Community
         </h2>
-        <div id="reportsList">${renderReports(reports)}</div>
+        <div class="panel-summary">${commSummary}</div>
+        <div class="panel-details">
+            <div id="reportsList">${renderReports(reports)}</div>
+        </div>
     </div>`;
     
     // Middle: Weather-based conditions
@@ -368,6 +389,9 @@ async function loadTrail() {
             this.checked ? hikingOverlay.addTo(map) : map.removeLayer(hikingOverlay);
         });
     }
+    
+    // Init collapsible for community panel (rendered inline, not async)
+    initCollapsible('communityConditions');
     
     // Load elevation + weather + air quality in parallel (don't let one block the other)
     const elevationPromise = loadElevation(trail, trailMap);
@@ -589,9 +613,13 @@ async function loadAirQuality(trail) {
         if (aq.no2 != null) html += `<p class="reason">NO₂: ${aq.no2.toFixed(1)} µg/m³</p>`;
         html += `</div>`;
         
+        const aqSummary = `AQI ${aqi} · ${label}`;
         panel.innerHTML = `<h2>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2c3 0 5 2 8 2s4-1 4-1v11s-1 1-4 1-5-2-8-2-4 1-4 1V2s1-1 4-1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
-            Air Quality</h2>${html}`;
+            Air Quality</h2>
+            <div class="panel-summary">${aqSummary}</div>
+            <div class="panel-details">${html}</div>`;
+        initCollapsible('airQualityPanel');
     } catch(e) {
         console.error('AQ load error:', e);
         panel.querySelector('.muted').textContent = 'Could not load air quality';
@@ -651,9 +679,13 @@ async function loadWeather(trail, trailConditionPin) {
         }
         whtml += `</div></div>`;
         
+        const weatherSummary = `${tempF}°F · ${inf.condition.charAt(0).toUpperCase() + inf.condition.slice(1)} · ${wDesc}`;
         document.getElementById('weatherConditions').innerHTML = `<h2>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-            Predicted Trail Conditions Based On Previous Weather</h2>${whtml}`;
+            Predicted Trail Conditions Based On Previous Weather</h2>
+            <div class="panel-summary">${weatherSummary}</div>
+            <div class="panel-details">${whtml}</div>`;
+        initCollapsible('weatherConditions');
     } catch(e) {
         console.error('Weather load error:', e);
         const wc = document.getElementById('weatherConditions');
@@ -740,87 +772,89 @@ async function loadStreams(trail) {
     const crossings = trail.water_crossings || [];
     const fords = crossings.filter(c => c.type === 'ford');
     const bridges = crossings.filter(c => c.type === 'bridge');
-    const hasCrossings = crossings.length > 0;
 
-    let html = `<h2>${waterIcon} Water Crossings &amp; Stream Levels</h2>`;
+    // Build summary text
+    const sumParts = [];
+    if (bridges.length > 0) sumParts.push(`${bridges.length} bridge${bridges.length > 1 ? 's' : ''}`);
+    if (fords.length > 0) sumParts.push(`${fords.length} ford${fords.length > 1 ? 's' : ''}`);
+    if (!crossings.length) sumParts.push('No crossings detected');
 
-    // Water crossings section
-    if (hasCrossings) {
-        // Summary banner
+    let details = '';
+
+    // Water crossings detail
+    if (crossings.length > 0) {
         const cParts = [];
         if (bridges.length > 0) cParts.push(`${bridges.length} bridge${bridges.length > 1 ? 's' : ''}`);
         if (fords.length > 0) cParts.push(`<strong>${fords.length} water ford${fords.length > 1 ? 's' : ''}</strong> (in-water crossing)`);
-        html += `<div class="crossings-summary">${cParts.join(' · ')}</div>`;
+        details += `<div class="crossings-summary">${cParts.join(' · ')}</div>`;
 
-        // Ford detail cards
         if (fords.length > 0) {
-            html += `<div class="crossing-cards">`;
+            details += `<div class="crossing-cards">`;
             fords.forEach(f => {
-                html += `<div class="crossing-card ford">
+                details += `<div class="crossing-card ford">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c44536" stroke-width="2"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 6c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><line x1="7" y1="1" x2="7" y2="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="17" y1="1" x2="17" y2="5"/></svg>
                     <span>Water Ford${f.name ? ': ' + f.name : ''}${f.depth ? ' · Depth: ' + f.depth : ''}</span>
                 </div>`;
             });
-            html += `</div>`;
+            details += `</div>`;
         }
-
-        // Bridge cards
         if (bridges.length > 0) {
-            html += `<div class="crossing-cards">`;
+            details += `<div class="crossing-cards">`;
             bridges.forEach(b => {
-                html += `<div class="crossing-card bridge">
+                details += `<div class="crossing-card bridge">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1565c0" stroke-width="2"><path d="M4 10h16M4 14h16"/><path d="M6 10V6M10 10V4M14 10V4M18 10V6"/><path d="M2 18l4-4M22 18l-4-4"/></svg>
                     <span>Bridge${b.name ? ': ' + b.name : ''}${b.material ? ' · ' + b.material : ''}</span>
                 </div>`;
             });
-            html += `</div>`;
+            details += `</div>`;
         }
     } else {
-        html += `<p class="muted" style="margin-bottom:12px;">No bridges or fords detected on this trail</p>`;
+        details += `<p class="muted" style="margin-bottom:12px;">No bridges or fords detected on this trail</p>`;
     }
 
-    // Stream gauges section
-    if (!trail.lat || !trail.lon) {
-        html += `<p class="muted">Location not available for stream data</p>`;
-        panel.innerHTML = html;
-        return;
-    }
-
-    try {
-        const res = await fetch(`/api/streams?lat=${trail.lat.toFixed(4)}&lon=${trail.lon.toFixed(4)}`);
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-
-        const gauges = data.gauges || [];
-        if (gauges.length === 0) {
-            html += `<p class="muted">No USGS stream gauges found nearby</p>`;
-        } else {
-            html += `<h3 style="font-size:1rem;color:var(--brown);margin:16px 0 8px 0;">Nearby Stream Gauges</h3>`;
-            html += `<div class="stream-gauges">`;
-            for (const g of gauges) {
-                const levelBar = g.gage_height != null ? Math.min(100, (g.gage_height / 10) * 100) : 0;
-                html += `
-                    <div class="stream-gauge-card">
-                        <div class="sg-header">
-                            <span class="sg-name">${g.name}</span>
-                            <span class="sg-level-badge" style="background:${g.gage_height_color}">${g.gage_height_label}</span>
-                        </div>
-                        <div class="sg-stats">
-                            ${g.gage_height != null ? `<div class="sg-stat"><span class="sg-stat-label">Water Level</span><span class="sg-stat-value">${g.gage_height} ft</span></div>` : ''}
-                            ${g.streamflow != null ? `<div class="sg-stat"><span class="sg-stat-label">Flow Rate</span><span class="sg-stat-value">${g.streamflow} ft³/s · ${g.streamflow_label}</span></div>` : ''}
-                        </div>
-                        <div class="sg-bar-wrap"><div class="sg-bar" style="width:${levelBar}%;background:${g.gage_height_color}"></div></div>
-                    </div>`;
+    // Stream gauges
+    if (trail.lat && trail.lon) {
+        try {
+            const res = await fetch(`/api/streams?lat=${trail.lat.toFixed(4)}&lon=${trail.lon.toFixed(4)}`);
+            const data = await res.json();
+            if (!data.error) {
+                const gauges = data.gauges || [];
+                if (gauges.length === 0) {
+                    details += `<p class="muted">No USGS stream gauges found nearby</p>`;
+                } else {
+                    sumParts.push(`${gauges.length} gauge${gauges.length > 1 ? 's' : ''} nearby`);
+                    details += `<h3 style="font-size:1rem;color:var(--brown);margin:16px 0 8px 0;">Nearby Stream Gauges</h3>`;
+                    details += `<div class="stream-gauges">`;
+                    for (const g of gauges) {
+                        const levelBar = g.gage_height != null ? Math.min(100, (g.gage_height / 10) * 100) : 0;
+                        details += `
+                            <div class="stream-gauge-card">
+                                <div class="sg-header">
+                                    <span class="sg-name">${g.name}</span>
+                                    <span class="sg-level-badge" style="background:${g.gage_height_color}">${g.gage_height_label}</span>
+                                </div>
+                                <div class="sg-stats">
+                                    ${g.gage_height != null ? `<div class="sg-stat"><span class="sg-stat-label">Water Level</span><span class="sg-stat-value">${g.gage_height} ft</span></div>` : ''}
+                                    ${g.streamflow != null ? `<div class="sg-stat"><span class="sg-stat-label">Flow Rate</span><span class="sg-stat-value">${g.streamflow} ft³/s · ${g.streamflow_label}</span></div>` : ''}
+                                </div>
+                                <div class="sg-bar-wrap"><div class="sg-bar" style="width:${levelBar}%;background:${g.gage_height_color}"></div></div>
+                            </div>`;
+                    }
+                    details += `</div>`;
+                }
             }
-            html += `</div>`;
+        } catch(e) {
+            console.error('Stream gauge error:', e);
+            details += `<p class="muted">Unable to load stream gauge data</p>`;
         }
-        html += `<p class="muted" style="font-size:0.75rem;margin-top:8px;">Stream data from <a href="https://waterservices.usgs.gov" target="_blank">USGS NWIS</a> · Crossings from <a href="https://www.openstreetmap.org" target="_blank">OpenStreetMap</a></p>`;
-        panel.innerHTML = html;
-    } catch(e) {
-        console.error('Stream gauge error:', e);
-        html += `<p class="muted">Unable to load stream gauge data</p>`;
-        panel.innerHTML = html;
     }
+
+    details += `<p class="muted" style="font-size:0.75rem;margin-top:8px;">Stream data from <a href="https://waterservices.usgs.gov" target="_blank">USGS NWIS</a> · Crossings from <a href="https://www.openstreetmap.org" target="_blank">OpenStreetMap</a></p>`;
+
+    panel.innerHTML = `<h2>${waterIcon} Water Crossings &amp; Stream Levels</h2>
+        <div class="panel-summary">${sumParts.join(' · ')}</div>
+        <div class="panel-details">${details}</div>`;
+    initCollapsible('streamGaugesPanel');
 }
 
 // ═══ NPS Trail Alerts ═══
@@ -838,23 +872,29 @@ async function loadAlerts(trail) {
         const alerts = data.alerts || [];
         const alertIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
 
+        const alertSummary = alerts.length === 0 ? 'No active alerts' : `${alerts.length} alert${alerts.length > 1 ? 's' : ''} nearby`;
+
         if (alerts.length === 0) {
             panel.innerHTML = `
                 <h2>${alertIcon} NPS Trail Alerts</h2>
-                <div class="nps-no-alerts">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    <span>No active alerts in this area</span>
+                <div class="panel-summary">${alertSummary}</div>
+                <div class="panel-details">
+                    <div class="nps-no-alerts">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        <span>No active alerts in this area</span>
+                    </div>
                 </div>`;
+            initCollapsible('npsAlertsPanel');
             return;
         }
 
-        let html = `<h2>${alertIcon} NPS Trail Alerts</h2><div class="nps-alerts-list">`;
+        let details = `<div class="nps-alerts-list">`;
 
         for (const a of alerts) {
             const catClass = a.category === 'Danger' || a.category === 'Park Closure' ? 'alert-danger' :
                              a.category === 'Caution' ? 'alert-caution' : 'alert-info';
             const distText = a.distance_km != null ? `${a.distance_km} km away` : '';
-            html += `
+            details += `
                 <div class="nps-alert-card ${catClass}">
                     <div class="nps-alert-header">
                         <span class="nps-alert-cat" style="color:${a.color}">${a.category}</span>
@@ -866,9 +906,12 @@ async function loadAlerts(trail) {
                 </div>`;
         }
 
-        html += `</div>
+        details += `</div>
             <p class="muted" style="font-size:0.75rem;margin-top:8px;">Data from <a href="https://www.nps.gov" target="_blank">National Park Service</a></p>`;
-        panel.innerHTML = html;
+        panel.innerHTML = `<h2>${alertIcon} NPS Trail Alerts</h2>
+            <div class="panel-summary">${alertSummary}</div>
+            <div class="panel-details">${details}</div>`;
+        initCollapsible('npsAlertsPanel');
     } catch(e) {
         console.error('NPS alerts error:', e);
         panel.querySelector('p').textContent = 'Unable to load alerts';

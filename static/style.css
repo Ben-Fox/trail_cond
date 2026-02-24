@@ -424,6 +424,32 @@ body {
     font-size: var(--font-lg);
     margin-bottom: 1rem;
     color: var(--green);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.condition-panel h2 .chevron {
+    margin-left: auto;
+    transition: transform 0.25s ease;
+    flex-shrink: 0;
+}
+.condition-panel.collapsed h2 .chevron {
+    transform: rotate(-90deg);
+}
+.condition-panel .panel-summary {
+    display: none;
+    font-size: 0.9rem;
+    color: var(--text-light);
+    margin-bottom: 0;
+}
+.condition-panel.collapsed .panel-summary {
+    display: block;
+}
+.condition-panel .panel-details {
+    transition: max-height 0.3s ease;
+}
+.condition-panel.collapsed .panel-details {
+    display: none;
 }
 /* Stream Gauge Cards */
 .stream-gauges { display: flex; flex-direction: column; gap: 10px; }
