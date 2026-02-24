@@ -330,7 +330,7 @@ out center tags;'''
                 return {}
 
         def _crossings_task():
-            """Detect bridges and fords along the trail."""
+            """Detect bridges and fords along the trail, deduplicated by proximity."""
             crossings = []
             if not geometry or len(geometry) < 2:
                 return crossings
@@ -341,8 +341,6 @@ out center tags;'''
                 if geometry[-1] not in sample_pts:
                     sample_pts.append(geometry[-1])
 
-                # Build around-line filter using sampled points
-                # Query for bridges and fords within 30m of trail points
                 around_sets = []
                 for pt in sample_pts[:10]:
                     around_sets.append(f'node(around:30,{pt["lat"]},{pt["lon"]})["ford"];')
@@ -354,33 +352,53 @@ out center tags;'''
 ({chr(10).join(around_sets)});
 out center tags;'''
                 data = overpass_query(q)
-                seen = set()
+                seen_ids = set()
+                raw = []
                 for el in data.get('elements', []):
                     tags = el.get('tags', {})
                     el_id = el.get('id')
-                    if el_id in seen:
+                    if el_id in seen_ids:
                         continue
-                    seen.add(el_id)
+                    seen_ids.add(el_id)
 
                     c_lat = el.get('lat') or (el.get('center', {}).get('lat'))
                     c_lon = el.get('lon') or (el.get('center', {}).get('lon'))
+                    if not c_lat or not c_lon:
+                        continue
 
                     if tags.get('ford') and tags['ford'] != 'no':
-                        crossings.append({
+                        raw.append({
                             'type': 'ford',
                             'name': tags.get('name', ''),
-                            'lat': c_lat,
-                            'lon': c_lon,
+                            'lat': c_lat, 'lon': c_lon,
                             'depth': tags.get('depth', ''),
                         })
                     elif tags.get('bridge') and tags['bridge'] != 'no':
-                        crossings.append({
+                        raw.append({
                             'type': 'bridge',
                             'name': tags.get('name', ''),
-                            'lat': c_lat,
-                            'lon': c_lon,
+                            'lat': c_lat, 'lon': c_lon,
                             'material': tags.get('material', tags.get('bridge:structure', '')),
                         })
+
+                # Deduplicate by proximity: crossings within 80m of each
+                # other are the same physical crossing
+                def _dist_m(lat1, lon1, lat2, lon2):
+                    r = 6371000
+                    dlat = radians(lat2 - lat1)
+                    dlon = radians(lon2 - lon1)
+                    a = sin(dlat/2)**2 + cos(radians(lat1))*cos(radians(lat2))*sin(dlon/2)**2
+                    return r * 2 * atan2(sqrt(a), sqrt(1-a))
+
+                for c in raw:
+                    is_dup = False
+                    for existing in crossings:
+                        if existing['type'] == c['type'] and _dist_m(existing['lat'], existing['lon'], c['lat'], c['lon']) < 80:
+                            is_dup = True
+                            break
+                    if not is_dup:
+                        crossings.append(c)
+
             except Exception:
                 pass
             return crossings
