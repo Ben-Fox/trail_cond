@@ -53,6 +53,7 @@
             <label class="map-toggle"><input type="checkbox" id="conditionsOverlayToggle"> Projected Trail Conditions</label>
             <label class="map-toggle"><input type="checkbox" id="trailOverlayToggle"> Trail Routes</label>
             <label class="map-toggle"><input type="checkbox" id="aqOverlayToggle"> Air Quality</label>
+            <label class="map-toggle"><input type="checkbox" id="labelsToggle"> Trail Names</label>
             <div id="conditionsLegend" class="conditions-legend" style="display:none;">
                 <span class="legend-item"><span class="legend-swatch" style="background:rgba(45,106,79,0.3)"></span>Dry</span>
                 <span class="legend-item"><span class="legend-swatch" style="background:rgba(176,137,104,0.5)"></span>Wet</span>
@@ -82,6 +83,23 @@
 </section>
 {% endblock %}
 {% block scripts %}
+<style>
+.leaflet-tooltip.pin-label {
+    background: rgba(255,255,255,0.92); border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 6px; padding: 2px 7px; font-weight: 700; font-size: 12px;
+    color: #2b2b2b; box-shadow: 0 1px 4px rgba(0,0,0,0.25); white-space: nowrap;
+    pointer-events: none;
+}
+.leaflet-tooltip.pin-label.label-hidden { display: none; }
+.cluster-name-label {
+    position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
+    background: rgba(255,255,255,0.92); border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 6px; padding: 2px 7px; font-weight: 700; font-size: 11px;
+    line-height: 1.25; color: #2b2b2b; box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    white-space: nowrap; text-align: center; pointer-events: none;
+}
+.cluster-pin { overflow: visible !important; }
+</style>
 <script>
 const US_STATES = {"AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California","CO":"Colorado","CT":"Connecticut","DE":"Delaware","FL":"Florida","GA":"Georgia","HI":"Hawaii","ID":"Idaho","IL":"Illinois","IN":"Indiana","IA":"Iowa","KS":"Kansas","KY":"Kentucky","LA":"Louisiana","ME":"Maine","MD":"Maryland","MA":"Massachusetts","MI":"Michigan","MN":"Minnesota","MS":"Mississippi","MO":"Missouri","MT":"Montana","NE":"Nebraska","NV":"Nevada","NH":"New Hampshire","NJ":"New Jersey","NM":"New Mexico","NY":"New York","NC":"North Carolina","ND":"North Dakota","OH":"Ohio","OK":"Oklahoma","OR":"Oregon","PA":"Pennsylvania","RI":"Rhode Island","SC":"South Carolina","SD":"South Dakota","TN":"Tennessee","TX":"Texas","UT":"Utah","VT":"Vermont","VA":"Virginia","WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming"};
 const sel = document.getElementById('stateFilter');
@@ -93,6 +111,36 @@ let currentTrails = [];
 let activeTrailType = 'all';
 let programmaticMove = false; // distinguish user pans from flyTo/fitBounds
 let userMovedSinceSearch = false; // suppress late search flyTo after user explores
+let showLabels = localStorage.getItem('tc_show_labels') === '1';
+
+function applyMarkerLabels() {
+    markerMap.forEach(m => {
+        const name = m._trailData ? m._trailData.name : '';
+        if (showLabels && name) {
+            if (!m.getTooltip()) {
+                m.bindTooltip(esc(name), {permanent: true, direction: 'top',
+                                          offset: [0, -50], className: 'pin-label'});
+            }
+        } else if (m.getTooltip()) {
+            m.unbindTooltip();
+        }
+    });
+    setTimeout(dedupeLabels, 60);
+}
+
+// Greedy label decollision: later labels that overlap earlier ones are hidden.
+function dedupeLabels() {
+    const els = Array.from(document.querySelectorAll('.leaflet-tooltip.pin-label'));
+    els.forEach(el => el.classList.remove('label-hidden'));
+    const kept = [];
+    els.forEach(el => {
+        const r = el.getBoundingClientRect();
+        const hit = kept.some(k => !(r.right < k.left || r.left > k.right ||
+                                     r.bottom < k.top || r.top > k.bottom));
+        if (hit) el.classList.add('label-hidden');
+        else kept.push(r);
+    });
+}
 
 // Condition pin icons
 const conditionCache = {}; // key: "lat,lon" -> {condition, reasons}
@@ -285,8 +333,20 @@ function initMap() {
               <text x="22" y="25" text-anchor="middle" font-family="Nunito,sans-serif" font-weight="800" font-size="${fs}" fill="#fff">${count}</text>
             </svg>`;
             
+            let labelHtml = '';
+            if (showLabels) {
+                const names = [];
+                for (const m of cluster.getAllChildMarkers()) {
+                    const n = m._trailData && m._trailData.name;
+                    if (n && !names.includes(n)) names.push(n);
+                    if (names.length >= 3) break;
+                }
+                const extra = count - names.length;
+                labelHtml = `<div class="cluster-name-label">${names.map(esc).join('<br>')}` +
+                            (extra > 0 ? `<br>+${extra} more` : '') + `</div>`;
+            }
             return L.divIcon({
-                html: svg,
+                html: labelHtml + svg,
                 className: 'cluster-pin',
                 iconSize: L.point(w, h),
                 iconAnchor: L.point(w/2, h),
@@ -295,6 +355,18 @@ function initMap() {
     });
     map.addLayer(markerCluster);
     map.on('zoomend', onZoomChange);
+
+    // Trail-name labels
+    const labelsToggle = document.getElementById('labelsToggle');
+    labelsToggle.checked = showLabels;
+    labelsToggle.addEventListener('change', function() {
+        showLabels = this.checked;
+        localStorage.setItem('tc_show_labels', showLabels ? '1' : '0');
+        applyMarkerLabels();
+        if (markerCluster.refreshClusters) markerCluster.refreshClusters();
+    });
+    map.on('moveend zoomend', () => setTimeout(dedupeLabels, 80));
+    markerCluster.on('animationend', () => { applyMarkerLabels(); });
     
     // Overlays
     const trailsOverlay = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', {opacity: 0.6, attribution:'Waymarked Trails'});
@@ -770,6 +842,7 @@ async function renderResults(trails, skipFitBounds) {
     const allMarkers = [];
     markerMap.forEach(m => allMarkers.push(m));
     markerCluster.addLayers(allMarkers);
+    applyMarkerLabels();
     
     // Route loading disabled to avoid Overpass rate limits
     // Routes are visible on the Waymarked Trails overlay instead

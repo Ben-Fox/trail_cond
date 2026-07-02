@@ -299,6 +299,25 @@ async function loadTrail() {
         </div>`;
     }
     
+    // Route Builder
+    if (trail.geometry && trail.geometry.length > 2) {
+        html += `<div class="section-block" id="routeBuilderSection">
+            <h2>Route Builder</h2>
+            <p class="muted">Combine connecting trails into a loop or out-and-back near your target distance.</p>
+            <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin:0.6rem 0;">
+                <select id="rbMode" style="padding:6px 10px;border-radius:8px;border:1px solid #ccc;">
+                    <option value="loop">Loop</option>
+                    <option value="outback">Out & Back</option>
+                </select>
+                <input id="rbMiles" type="number" min="1" max="40" step="0.5" value="5"
+                       style="width:5.5rem;padding:6px 10px;border-radius:8px;border:1px solid #ccc;"> miles
+                <button id="rbGo" class="btn btn-primary">Suggest Route</button>
+                <button id="rbClear" class="btn btn-secondary" style="display:none;">Clear</button>
+            </div>
+            <div id="rbResult" class="muted"></div>
+        </div>`;
+    }
+
     // OSM attribution
     const usgsAttr = trail.usgs_enriched ? ' &amp; <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank">USGS National Map</a>' : '';
     html += `<p class="muted" style="margin-top:2rem;font-size:0.8rem">Trail data from <a href="https://www.openstreetmap.org/${OSM_TYPE}/${OSM_ID}" target="_blank">OpenStreetMap</a>${usgsAttr}</p>`;
@@ -393,6 +412,48 @@ async function loadTrail() {
             });
         }
         
+        // Route Builder wiring
+        let rbLayer = null;
+        const rbGo = document.getElementById('rbGo');
+        if (rbGo) {
+            const rbResult = document.getElementById('rbResult');
+            const rbClear = document.getElementById('rbClear');
+            rbGo.addEventListener('click', async () => {
+                const mode = document.getElementById('rbMode').value;
+                const miles = parseFloat(document.getElementById('rbMiles').value) || 5;
+                const km = miles * 1.60934;
+                rbResult.textContent = 'Searching the trail network (can take ~10-20s the first time)...';
+                rbGo.disabled = true;
+                try {
+                    const wids = new URLSearchParams(window.location.search).get('way_ids') || '';
+                    const r = await fetch(`/api/route/suggest?osm_type=${OSM_TYPE}&osm_id=${OSM_ID}`
+                        + `&mode=${mode}&target_km=${km.toFixed(2)}${wids ? '&way_ids=' + wids : ''}`);
+                    const d = await r.json();
+                    if (d.error) { rbResult.textContent = d.error; return; }
+                    if (rbLayer) { trailMap.removeLayer(rbLayer); }
+                    const latlngs = d.geometry.map(p => [p.lat, p.lon]);
+                    rbLayer = L.layerGroup([
+                        L.polyline(latlngs, {color: '#1d5fbf', weight: 6, opacity: 0.5}),
+                        L.polyline(latlngs, {color: '#4a90d9', weight: 3, opacity: 0.95, dashArray: '8 6'}),
+                    ]).addTo(trailMap);
+                    trailMap.fitBounds(L.polyline(latlngs).getBounds(), {padding: [30, 30]});
+                    const names = (d.names || []).map(esc).join(' → ');
+                    rbResult.innerHTML = `<strong>${d.total_mi} mi ${mode === 'loop' ? 'loop' : 'out & back'}</strong>`
+                        + ` (${d.n_segments} segments)` + (names ? `<br>${names}` : '');
+                    rbClear.style.display = '';
+                } catch (e) {
+                    rbResult.textContent = 'Route search failed.';
+                } finally {
+                    rbGo.disabled = false;
+                }
+            });
+            rbClear.addEventListener('click', () => {
+                if (rbLayer) { trailMap.removeLayer(rbLayer); rbLayer = null; }
+                rbClear.style.display = 'none';
+                rbResult.textContent = '';
+            });
+        }
+
         // Water crossing markers
         if (trail.water_crossings && trail.water_crossings.length > 0) {
             trail.water_crossings.forEach(c => {

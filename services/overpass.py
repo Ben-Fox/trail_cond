@@ -1,4 +1,6 @@
 import hashlib
+import json
+import os
 import time
 import logging
 import threading
@@ -16,7 +18,42 @@ CACHE_TTL = 600  # 10 minutes
 OVERPASS_SERVERS = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
 ]
+
+# Disk cache: geometry barely changes; surviving restarts avoids re-hitting
+# rate-limited public servers for data we already had.
+_DISK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         'data_cache', 'overpass')
+DISK_TTL = 86400  # 24h
+
+
+def _disk_get(key):
+    try:
+        path = os.path.join(_DISK_DIR, key + '.json')
+        if os.path.exists(path) and time.time() - os.path.getmtime(path) < DISK_TTL:
+            with open(path) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
+
+def _disk_put(key, data):
+    try:
+        os.makedirs(_DISK_DIR, exist_ok=True)
+        tmp = os.path.join(_DISK_DIR, key + '.tmp')
+        with open(tmp, 'w') as f:
+            json.dump(data, f)
+        os.replace(tmp, os.path.join(_DISK_DIR, key + '.json'))
+        # bound the cache dir at ~400 entries, drop oldest
+        files = [os.path.join(_DISK_DIR, x) for x in os.listdir(_DISK_DIR) if x.endswith('.json')]
+        if len(files) > 400:
+            files.sort(key=os.path.getmtime)
+            for f in files[:len(files) - 400]:
+                os.remove(f)
+    except Exception:
+        pass
 
 _last_overpass_request = 0
 
@@ -57,7 +94,7 @@ def _cluster_ways(ways, max_merge_km=5.0):
     return clusters
 
 
-def overpass_query(query):
+def overpass_query(query, read_timeout=30):
     global _last_overpass_request
     cache_key = hashlib.md5(query.encode()).hexdigest()
     now = time.time()
@@ -73,6 +110,12 @@ def overpass_query(query):
         if now - ts < CACHE_TTL:
             return data
 
+    disk = _disk_get(cache_key)
+    if disk is not None:
+        with _cache_lock:
+            _overpass_cache[cache_key] = (now, disk)
+        return disk
+
     elapsed = now - _last_overpass_request
     if elapsed < 1.5:
         time.sleep(1.5 - elapsed)
@@ -81,7 +124,7 @@ def overpass_query(query):
     for server in OVERPASS_SERVERS:
         try:
             _last_overpass_request = time.time()
-            r = http_session.post(server, data={'data': query}, timeout=30)
+            r = http_session.post(server, data={'data': query}, timeout=read_timeout)
             if r.status_code == 429:
                 last_err = Exception(f'Rate limited by {server}')
                 time.sleep(2)
@@ -90,6 +133,7 @@ def overpass_query(query):
             data = r.json()
             with _cache_lock:
                 _overpass_cache[cache_key] = (time.time(), data)
+            _disk_put(cache_key, data)
             return data
         except Exception as e:
             last_err = e

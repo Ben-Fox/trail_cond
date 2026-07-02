@@ -1,3 +1,4 @@
+import logging
 from math import radians, sin, cos, sqrt, atan2
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from flask import Blueprint, request, jsonify
@@ -8,6 +9,7 @@ from services.usgs import usgs_query_bbox
 from services import http_session
 
 _executor = ThreadPoolExecutor(max_workers=4)
+logger = logging.getLogger(__name__)
 
 trail_bp = Blueprint('trail', __name__)
 
@@ -523,3 +525,247 @@ out center tags;'''
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Route Builder — compose loops / out-and-backs near a target distance
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _snap_key(pt, grid=0.00025):
+    """Node key: ~25m snap grid so nearby endpoints share a graph node."""
+    return (round(pt['lat'] / grid), round(pt['lon'] / grid))
+
+
+def _build_route_graph(edges_pts):
+    """edges_pts: list of dicts(name, pts). Splits edges at T-junctions
+    (an endpoint of one way touching the middle of another) and returns
+    (edges, adjacency) where edges[i] = dict(name, pts, km, a, b)."""
+    # collect all endpoints
+    endpoints = []
+    for e in edges_pts:
+        endpoints.append(e['pts'][0])
+        endpoints.append(e['pts'][-1])
+
+    # split edges where a FOREIGN endpoint lands on an interior vertex (~30m).
+    # A way's own endpoints are excluded: cutting next to them creates tiny
+    # stubs whose removal would orphan the trailhead node from the graph.
+    split_edges = []
+    for e in edges_pts:
+        pts = e['pts']
+        own = (pts[0], pts[-1])
+        cut_idx = set()
+        for k in range(1, len(pts) - 1):
+            for ep in endpoints:
+                if ep is own[0] or ep is own[1]:
+                    continue
+                dlat = (pts[k]['lat'] - ep['lat']) * 111000
+                dlon = (pts[k]['lon'] - ep['lon']) * 85000
+                if dlat * dlat + dlon * dlon < 30 * 30:
+                    cut_idx.add(k)
+                    break
+        idxs = [0] + sorted(cut_idx) + [len(pts) - 1]
+        for a, b in zip(idxs, idxs[1:]):
+            if b > a:
+                seg = pts[a:b + 1]
+                if len(seg) >= 2:
+                    split_edges.append(dict(name=e['name'], pts=seg))
+
+    edges = []
+    adj = {}
+    for e in split_edges:
+        km = _chain_length_km(e['pts'])
+        a, b = _snap_key(e['pts'][0]), _snap_key(e['pts'][-1])
+        if km < 0.005 and a == b:
+            continue   # degenerate speck; short connector edges are kept
+        i = len(edges)
+        edges.append(dict(name=e['name'], pts=e['pts'], km=km, a=a, b=b))
+        adj.setdefault(a, []).append((i, b))
+        adj.setdefault(b, []).append((i, a))
+    return edges, adj
+
+
+def _search_route(edges, adj, start, target_km, mode, max_expansions=200000):
+    """DFS over the edge graph.
+
+    outback: simple path from start; total = 2 x path length.
+    loop: LOLLIPOP-aware cycle search — a stem from the trailhead into the
+    network, a cycle, and the stem back (stem may be empty for a pure loop).
+    Returns (stem_edges, cycle_edges, total_km) for loop,
+            (path_edges, None, total_km) for outback; path None if nothing found.
+    """
+    best = {'score': float('inf'), 'path': None, 'cycle': None, 'km': 0}
+    expansions = [0]
+    limit = target_km * (0.75 if mode == 'outback' else 0.9)
+    MAX_DEPTH = 200
+
+    def dfs(node, km, path, used, nodes, node_pos, km_at):
+        if expansions[0] > max_expansions or len(path) > MAX_DEPTH:
+            return
+        expansions[0] += 1
+        if mode == 'outback' and path:
+            score = abs(km * 2 - target_km)
+            if score < best['score']:
+                best.update(score=score, path=list(path), cycle=None, km=km * 2)
+        for (ei, other) in adj.get(node, []):
+            if ei in used:
+                continue
+            e = edges[ei]
+            nk = km + e['km']
+            if mode == 'loop' and other in node_pos:
+                p = node_pos[other]
+                stem_km = km_at[p]
+                cyc_km = nk - stem_km
+                total = stem_km * 2 + cyc_km
+                if cyc_km >= max(0.3, target_km * 0.15):
+                    score = abs(total - target_km)
+                    if score < best['score']:
+                        best.update(score=score, path=path[:p], cycle=path[p:] + [ei], km=total)
+                continue
+            if nk > limit and mode == 'outback':
+                continue
+            if mode == 'loop' and nk > target_km * 1.1:
+                continue
+            used.add(ei)
+            path.append(ei)
+            nodes.append(other)
+            node_pos[other] = len(nodes) - 1
+            km_at.append(nk)
+            dfs(other, nk, path, used, nodes, node_pos, km_at)
+            km_at.pop()
+            del node_pos[other]
+            nodes.pop()
+            path.pop()
+            used.discard(ei)
+
+    dfs(start, 0.0, [], set(), [start], {start: 0}, [0.0])
+    return best['path'], best['cycle'], best['km']
+
+
+def _walk_edges(edges, path, start_node):
+    """Ordered, oriented points + names + end node for an edge sequence."""
+    geom = []
+    names = []
+    node = start_node
+    for ei in path:
+        e = edges[ei]
+        pts = e['pts'] if e['a'] == node else list(reversed(e['pts']))
+        node = e['b'] if e['a'] == node else e['a']
+        geom.extend(pts if not geom else pts[1:])
+        if e['name'] and (not names or names[-1] != e['name']):
+            names.append(e['name'])
+    return geom, names, node
+
+
+def _route_geometry(edges, stem, cycle, start):
+    """Full route geometry: outback = path out (client doubles conceptually);
+    loop = stem + cycle + stem reversed (lollipop)."""
+    if cycle is None:
+        geom, names, _ = _walk_edges(edges, stem, start)
+        return geom, names
+    stem_geom, stem_names, mid = _walk_edges(edges, stem, start)
+    cyc_geom, cyc_names, _ = _walk_edges(edges, cycle, mid)
+    geom = stem_geom + (cyc_geom if not stem_geom else cyc_geom[1:]) + stem_geom[::-1][1:]
+    names = stem_names + [n for n in cyc_names if n not in stem_names]
+    return geom, names
+
+
+@trail_bp.route('/api/route/suggest')
+def api_route_suggest():
+    osm_type = request.args.get('osm_type', 'way')
+    try:
+        osm_id = int(request.args.get('osm_id', 0))
+        target_km = float(request.args.get('target_km', 8.0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'invalid parameters'}), 400
+    mode = request.args.get('mode', 'loop')
+    if mode not in ('loop', 'outback') or not (0.5 <= target_km <= 80) or osm_type not in ('way', 'relation'):
+        return jsonify({'error': 'invalid parameters'}), 400
+    way_ids = request.args.get('way_ids', '')
+
+    cache_key = f"route:{osm_type}:{osm_id}:{way_ids}:{mode}:{target_km:.1f}"
+    cached = cached_response(cache_key, ttl=1800)
+    if cached:
+        return jsonify(cached)
+
+    try:
+        # anchor geometry
+        if osm_type == 'relation':
+            q = f'[out:json][timeout:25];relation({osm_id});>;out geom;'
+        else:
+            ids = [str(osm_id)] + [i.strip() for i in way_ids.split(',') if i.strip()]
+            union = ''.join(f'way({w});' for w in dict.fromkeys(ids))
+            q = f'[out:json][timeout:25];({union});out geom;'
+        anchor = overpass_query(q)
+        anchor_pts = []
+        for el in anchor.get('elements', []):
+            if el.get('type') == 'way' and 'geometry' in el:
+                anchor_pts.append(dict(
+                    name='(this trail)',
+                    pts=[{'lat': p['lat'], 'lon': p['lon']} for p in el['geometry']]))
+        if not anchor_pts:
+            return jsonify({'error': 'Trail geometry not found'}), 404
+
+        lats = [p['lat'] for e in anchor_pts for p in e['pts']]
+        lons = [p['lon'] for e in anchor_pts for p in e['pts']]
+        # quantized buffer: nearby target distances share one cached network query
+        raw_buf = max(0.01, min(0.09, target_km / 111.0 * 0.7))
+        buf = min([0.02, 0.045, 0.09], key=lambda b: abs(b - raw_buf) if b >= raw_buf else 1e9)
+        bbox = (min(lats) - buf, min(lons) - buf, max(lats) + buf, max(lons) + buf)
+
+        # nearby named path network
+        def _net_query(b):
+            q2 = (f'[out:json][timeout:40];'
+                  f'way["highway"~"^(path|footway|track|cycleway|bridleway)$"]'
+                  f'({b[0]},{b[1]},{b[2]},{b[3]});out geom 350;')
+            return overpass_query(q2, read_timeout=50)
+        try:
+            net = _net_query(bbox)
+        except Exception:
+            # dense areas can make the big query too expensive; retry small
+            small = (min(lats) - 0.02, min(lons) - 0.02, max(lats) + 0.02, max(lons) + 0.02)
+            net = _net_query(small)
+        edges_pts = list(anchor_pts)
+        anchor_ids = {osm_id} | {int(i) for i in way_ids.split(',') if i.strip().isdigit()}
+        for el in net.get('elements', []):
+            if el.get('type') == 'way' and 'geometry' in el and el.get('id') not in anchor_ids:
+                edges_pts.append(dict(
+                    name=(el.get('tags', {}) or {}).get('name', ''),
+                    pts=[{'lat': p['lat'], 'lon': p['lon']} for p in el['geometry']]))
+
+        edges, adj = _build_route_graph(edges_pts)
+        start = _snap_key(anchor_pts[0]['pts'][0])
+        if start not in adj:
+            # trailhead stub may have been pruned; snap to nearest graph node
+            sp = anchor_pts[0]['pts'][0]
+            best_node, best_d = None, 1e18
+            for node in adj:
+                dlat = (node[0] * 0.00025 - sp['lat']) * 111000
+                dlon = (node[1] * 0.00025 - sp['lon']) * 85000
+                d = dlat * dlat + dlon * dlon
+                if d < best_d:
+                    best_d, best_node = d, node
+            if best_node is None or best_d > 150 * 150:
+                return jsonify({'error': 'Trailhead not connected to network'}), 404
+            start = best_node
+
+        stem, cycle, km = _search_route(edges, adj, start, target_km, mode)
+        if stem is None and cycle is None:
+            return jsonify({'error': 'No suitable route found — try a different distance'}), 404
+
+        geom, names = _route_geometry(edges, stem or [], cycle, start)
+        total = km
+        n_seg = len(stem or []) + len(cycle or [])
+        result = {
+            'mode': mode,
+            'target_km': target_km,
+            'total_km': round(total, 2),
+            'total_mi': round(total * 0.621371, 2),
+            'names': [n for n in names if n][:12],
+            'n_segments': n_seg,
+            'geometry': geom,
+        }
+        cache_response(cache_key, result, ttl=1800)
+        return jsonify(result)
+    except Exception as e:
+        logger.warning(f'route suggest failed: {e}')
+        return jsonify({'error': 'Trail network lookup timed out — try again in a minute'}), 503
