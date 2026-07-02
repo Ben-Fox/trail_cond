@@ -92,6 +92,7 @@ let currentView = 'map'; // default to map
 let currentTrails = [];
 let activeTrailType = 'all';
 let programmaticMove = false; // distinguish user pans from flyTo/fitBounds
+let userMovedSinceSearch = false; // suppress late search flyTo after user explores
 
 // Condition pin icons
 const conditionCache = {}; // key: "lat,lon" -> {condition, reasons}
@@ -534,6 +535,7 @@ async function fetchAutocomplete(q) {
 
 // --- Search ---
 async function doSearch() {
+    userMovedSinceSearch = false;
     const q = document.getElementById('searchInput').value;
     const state = document.getElementById('stateFilter').value;
     const params = new URLSearchParams();
@@ -561,11 +563,12 @@ async function doSearch() {
             return;
         }
         if (!trails.length) {
-            // Still fly to the searched location even if no trails found
-            if (geoBbox) {
+            // Still fly to the searched location even if no trails found —
+            // unless the user already moved on while we were searching
+            if (geoBbox && !userMovedSinceSearch) {
                 programmaticMove = true;
                 map.flyToBounds([[geoBbox[0], geoBbox[2]], [geoBbox[1], geoBbox[3]]], {padding: [50,50], maxZoom: 14, duration: 1.2});
-            } else if (center) {
+            } else if (center && !userMovedSinceSearch) {
                 programmaticMove = true;
                 map.flyTo([center.lat, center.lon], 12, {duration: 1.2});
             }
@@ -574,11 +577,12 @@ async function doSearch() {
             return;
         }
         
-        // Fly to searched location first, then render results
-        if (geoBbox) {
+        // Fly to searched location — but never yank the map away from a user
+        // who kept exploring while the (slow) search was in flight
+        if (geoBbox && !userMovedSinceSearch) {
             programmaticMove = true;
             map.flyToBounds([[geoBbox[0], geoBbox[2]], [geoBbox[1], geoBbox[3]]], {padding: [50,50], maxZoom: 14, duration: 1.2});
-        } else if (center) {
+        } else if (center && !userMovedSinceSearch) {
             programmaticMove = true;
             map.flyTo([center.lat, center.lon], 12, {duration: 1.2});
         }
@@ -810,6 +814,7 @@ map.on('moveend', () => {
         searchMapBtn.style.display = 'none';
         return;
     }
+    userMovedSinceSearch = true;
     if (map.getZoom() >= 9) {
         searchMapBtn.style.display = 'flex';
         // Prefetch weather grid for this viewport so conditions are instant when search completes

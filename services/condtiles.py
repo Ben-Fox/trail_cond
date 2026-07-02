@@ -45,14 +45,13 @@ _lock = threading.Lock()
 # ---------------------------------------------------------------- lattice
 
 def _lattice_spacing(z):
-    """Sample spacing in degrees. Bands keep ~5 points per tile edge; capped at
-    0.03125 deg (~3 km) because forecast models carry no finer information."""
+    """Sample spacing in degrees. Only TWO band transitions (z6->7, z9->10) so
+    the rendered field is geographically stable while zooming within a band;
+    finest capped at 0.03125 deg (~3 km) = forecast model resolution."""
     if z <= 6:
-        return 1.0
-    if z <= 8:
-        return 0.25
-    if z <= 10:
-        return 0.0625
+        return 0.5
+    if z <= 9:
+        return 0.125
     return 0.03125
 
 

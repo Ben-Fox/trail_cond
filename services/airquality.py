@@ -13,6 +13,8 @@ import time
 import math
 import logging
 import threading
+
+import numpy as np
 from flask import Blueprint, Response, request, jsonify
 
 from services import http_session
@@ -92,155 +94,150 @@ def _tile_to_bbox(z, x, y):
     return lat_s, lat_n, lon_w, lon_e
 
 
-def _fetch_aqi_grid(lat_s, lat_n, lon_w, lon_e, samples=4):
-    """Fetch current US AQI for a grid of points. Returns list of (lat, lon, aqi)."""
-    points = []
-    for r in range(samples):
-        for c in range(samples):
-            lat = lat_s + (lat_n - lat_s) * (r + 0.5) / samples
-            lon = lon_w + (lon_e - lon_w) * (c + 0.5) / samples
-            points.append((round(lat, 3), round(lon, 3)))
+def _aq_lattice_spacing(z):
+    """One transition only (z6->7): CAMS air-quality data is ~0.25 deg, so
+    0.125 deg sampling is already finer than the data everywhere."""
+    return 0.5 if z <= 6 else 0.125
 
-    # Check point cache first
+
+def _get_aq_points(cells):
+    """Current US AQI per lattice cell; batch-fetches only missing cells."""
     now = time.time()
-    results = []
-    uncached = []
-    for i, (lat, lon) in enumerate(points):
-        key = f"{lat:.2f},{lon:.2f}"
-        with _aq_lock:
-            entry = _aq_point_cache.get(key)
-        if entry is not None and now - entry[0] < AQ_POINT_CACHE_TTL:
-            results.append((lat, lon, entry[1]))
-        else:
-            results.append(None)
-            uncached.append(i)
+    out = {}
+    missing = []
+    with _aq_lock:
+        for (i, j, lat, lon) in cells:
+            e = _aq_point_cache.get((i, j))
+            if e is not None and now - e[0] < AQ_POINT_CACHE_TTL:
+                out[(i, j)] = e[1]
+            else:
+                missing.append((i, j, lat, lon))
 
-    if uncached:
-        batch_lats = ','.join(str(points[i][0]) for i in uncached)
-        batch_lons = ','.join(str(points[i][1]) for i in uncached)
+    for k0 in range(0, len(missing), 100):
+        chunk = missing[k0:k0 + 100]
         try:
             r = http_session.get('https://air-quality-api.open-meteo.com/v1/air-quality', params={
-                'latitude': batch_lats,
-                'longitude': batch_lons,
+                'latitude': ','.join(f'{p[2]:.4f}' for p in chunk),
+                'longitude': ','.join(f'{p[3]:.4f}' for p in chunk),
                 'current': 'us_aqi',
             }, timeout=12)
             data = r.json()
             if not isinstance(data, list):
                 data = [data]
-
-            for j, d in enumerate(data):
-                idx = uncached[j]
-                aqi = d.get('current', {}).get('us_aqi', 0) or 0
-                lat, lon = points[idx]
-                results[idx] = (lat, lon, aqi)
-                key = f"{lat:.2f},{lon:.2f}"
-                with _aq_lock:
-                    _aq_point_cache[key] = (now, aqi)
+            with _aq_lock:
+                for p, d in zip(chunk, data):
+                    aqi = float(d.get('current', {}).get('us_aqi', 0) or 0)
+                    _aq_point_cache[(p[0], p[1])] = (now, aqi)
+                    out[(p[0], p[1])] = aqi
         except Exception as e:
-            logger.warning(f'AQ tile fetch failed: {e}')
-            for j in uncached:
-                if results[j] is None:
-                    results[j] = (points[j][0], points[j][1], 0)
+            logger.warning(f'AQ point fetch failed ({len(chunk)} pts): {e}')
 
-    # Backfill any slots a partial upstream response left empty, so no None
-    # reaches the tile renderer (which would raise and 500 the tile route).
-    for i in range(len(results)):
-        if results[i] is None:
-            results[i] = (points[i][0], points[i][1], 0)
-
-    return results
+    with _aq_lock:
+        if len(_aq_point_cache) > 20000:
+            stale = sorted(_aq_point_cache.items(), key=lambda kv: kv[1][0])
+            for k, _ in stale[:len(_aq_point_cache) - 20000]:
+                _aq_point_cache.pop(k, None)
+    return out
 
 
-def _render_aq_tile(scored_points, lat_s, lat_n, lon_w, lon_e, size=256):
-    """Render AQI overlay tile using IDW interpolation."""
+# vectorized EPA color ramp lookup tables
+_AQI_X = np.array([v for v, _ in AQI_COLORS], dtype=np.float32)
+_AQI_R = np.array([c[0] for _, c in AQI_COLORS], dtype=np.float32)
+_AQI_G = np.array([c[1] for _, c in AQI_COLORS], dtype=np.float32)
+_AQI_B = np.array([c[2] for _, c in AQI_COLORS], dtype=np.float32)
+_AQI_A = np.array([c[3] for _, c in AQI_COLORS], dtype=np.float32)
+
+
+def _render_aq_tile_v2(cells, values, lat_s, lat_n, lon_w, lon_e, size=256):
+    """numpy IDW over the continuous AQI field + EPA ramp."""
     from PIL import Image, ImageFilter
 
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    pixels = img.load()
+    pts = [(lat, lon, values[(i, j)]) for (i, j, lat, lon) in cells if (i, j) in values]
+    if not pts:
+        return Image.new('RGBA', (size, size), (0, 0, 0, 0))
 
-    lat_range = lat_n - lat_s
-    lon_range = lon_e - lon_w
-    power = 2.5
+    p_lat = np.array([p[0] for p in pts], dtype=np.float32)
+    p_lon = np.array([p[1] for p in pts], dtype=np.float32)
+    p_aqi = np.array([p[2] for p in pts], dtype=np.float32)
 
-    pt_lats = [p[0] for p in scored_points]
-    pt_lons = [p[1] for p in scored_points]
-    pt_aqi = [p[2] for p in scored_points]
-    n_pts = len(scored_points)
+    lat_v = np.linspace(lat_n, lat_s, size, dtype=np.float32)[:, None, None]
+    lon_v = np.linspace(lon_w, lon_e, size, dtype=np.float32)[None, :, None]
+    km_lon = 111.0 * math.cos(math.radians((lat_s + lat_n) / 2))
+    dlat = (lat_v - p_lat[None, None, :]) * 111.0
+    dlon = (lon_v - p_lon[None, None, :]) * km_lon
+    w = 1.0 / ((dlat * dlat + dlon * dlon + 1e-6) ** 1.25)
+    aqi = (w * p_aqi).sum(axis=2) / w.sum(axis=2)
 
-    for py in range(size):
-        lat = lat_n - (py / size) * lat_range
-        for px in range(size):
-            lon = lon_w + (px / size) * lon_range
+    out = np.empty((size, size, 4), dtype=np.uint8)
+    out[..., 0] = np.interp(aqi, _AQI_X, _AQI_R).astype(np.uint8)
+    out[..., 1] = np.interp(aqi, _AQI_X, _AQI_G).astype(np.uint8)
+    out[..., 2] = np.interp(aqi, _AQI_X, _AQI_B).astype(np.uint8)
+    out[..., 3] = np.interp(aqi, _AQI_X, _AQI_A).astype(np.uint8)
 
-            total_w = 0
-            w_aqi = 0
+    img = Image.fromarray(out, 'RGBA')
+    return img.filter(ImageFilter.GaussianBlur(radius=1.5))
 
-            for i in range(n_pts):
-                dlat = (lat - pt_lats[i]) * 111
-                dlon = (lon - pt_lons[i]) * 85
-                dsq = dlat * dlat + dlon * dlon
-                if dsq < 0.01:
-                    w_aqi = pt_aqi[i]
-                    total_w = 1
-                    break
-                wt = 1.0 / (dsq ** (power / 2))
-                total_w += wt
-                w_aqi += wt * pt_aqi[i]
 
-            aqi = w_aqi / total_w if total_w > 0 else 0
-            pixels[px, py] = _aqi_color_rgba(aqi)
-
-    img = img.filter(ImageFilter.GaussianBlur(radius=8))
-    return img
+_aq_inflight = {}
 
 
 @airquality_bp.route('/api/tiles/airquality/<int:z>/<int:x>/<int:y>.png')
 def airquality_tile(z, x, y):
-    """Serve an air quality overlay tile."""
+    """AQ overlay tile from the shared lattice (seamless + zoom-stable)."""
     from PIL import Image
+    from services.condtiles import _lattice_points
 
-    if z < 4 or z > 14:
+    def _blank(max_age=3600):
         img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
         buf = io.BytesIO()
         img.save(buf, 'PNG', optimize=True)
         return Response(buf.getvalue(), mimetype='image/png',
-                        headers={'Cache-Control': 'public, max-age=3600'})
+                        headers={'Cache-Control': f'public, max-age={max_age}'})
 
-    cache_key = (z, x, y)
+    if z < 4 or z > 14:
+        return _blank()
+
+    key = (z, x, y)
     now = time.time()
-    with _aq_lock:
-        entry = _aq_tile_cache.get(cache_key)
-    if entry is not None and now - entry[0] < AQ_TILE_CACHE_TTL:
-        return Response(entry[1], mimetype='image/png',
-                        headers={'Cache-Control': f'public, max-age={AQ_TILE_CACHE_TTL}'})
+    while True:
+        with _aq_lock:
+            entry = _aq_tile_cache.get(key)
+            if entry and now - entry[0] < AQ_TILE_CACHE_TTL:
+                return Response(entry[1], mimetype='image/png',
+                                headers={'Cache-Control': f'public, max-age={AQ_TILE_CACHE_TTL}'})
+            ev = _aq_inflight.get(key)
+            if ev is None:
+                _aq_inflight[key] = threading.Event()
+                break
+        ev.wait(timeout=20)
+        now = time.time()
 
     try:
         lat_s, lat_n, lon_w, lon_e = _tile_to_bbox(z, x, y)
-        samples = 3 if z <= 7 else 4 if z <= 10 else 5
-
-        scored = _fetch_aqi_grid(lat_s, lat_n, lon_w, lon_e, samples=samples)
-        img = _render_aq_tile(scored, lat_s, lat_n, lon_w, lon_e)
-
+        cells = _lattice_points(lat_s, lat_n, lon_w, lon_e, _aq_lattice_spacing(z))
+        values = _get_aq_points(cells)
+        if not values:
+            return _blank(300)
+        img = _render_aq_tile_v2(cells, values, lat_s, lat_n, lon_w, lon_e)
         buf = io.BytesIO()
         img.save(buf, 'PNG', optimize=True)
-        png_bytes = buf.getvalue()
+        png = buf.getvalue()
+        with _aq_lock:
+            _aq_tile_cache[key] = (time.time(), png)
+            if len(_aq_tile_cache) > 2000:
+                stale = sorted(_aq_tile_cache.items(), key=lambda kv: kv[1][0])
+                for k, _ in stale[:len(_aq_tile_cache) - 2000]:
+                    _aq_tile_cache.pop(k, None)
+        return Response(png, mimetype='image/png',
+                        headers={'Cache-Control': f'public, max-age={AQ_TILE_CACHE_TTL}'})
     except Exception as e:
         logger.warning(f'AQ tile render failed for {z}/{x}/{y}: {e}')
-        blank = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
-        buf = io.BytesIO()
-        blank.save(buf, 'PNG', optimize=True)
-        return Response(buf.getvalue(), mimetype='image/png',
-                        headers={'Cache-Control': 'public, max-age=300'})
-
-    with _aq_lock:
-        _aq_tile_cache[cache_key] = (now, png_bytes)
-        if len(_aq_tile_cache) > 2000:
-            stale = [k for k, (ts, _) in _aq_tile_cache.items() if now - ts > AQ_TILE_CACHE_TTL]
-            for k in stale:
-                _aq_tile_cache.pop(k, None)
-
-    return Response(png_bytes, mimetype='image/png',
-                    headers={'Cache-Control': f'public, max-age={AQ_TILE_CACHE_TTL}'})
+        return _blank(300)
+    finally:
+        with _aq_lock:
+            ev = _aq_inflight.pop(key, None)
+        if ev:
+            ev.set()
 
 
 @airquality_bp.route('/api/airquality')
