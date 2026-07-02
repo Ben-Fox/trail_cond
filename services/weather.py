@@ -6,7 +6,6 @@ from services.cache import cached_response, cache_response
 
 weather_bp = Blueprint('weather', __name__)
 
-_weather_cache = {}
 WEATHER_CACHE_TTL = 900  # 15 minutes
 
 
@@ -168,14 +167,18 @@ def api_weather_grid():
     lat_list = lat_list[:100]
     lon_list = lon_list[:100]
 
-    now = time.time()
     results = []
     uncached_indices = []
 
     for i in range(len(lat_list)):
-        key = f"grid:{float(lat_list[i]):.2f},{float(lon_list[i]):.2f}"
-        if key in _weather_cache and now - _weather_cache[key][0] < WEATHER_CACHE_TTL:
-            results.append(_weather_cache[key][1])
+        try:
+            key = f"grid:{float(lat_list[i]):.2f},{float(lon_list[i]):.2f}"
+        except (ValueError, TypeError):
+            results.append({'condition': 'clear', 'reasons': ['Invalid coordinates']})
+            continue
+        c = cached_response(key, ttl=WEATHER_CACHE_TTL)
+        if c is not None:
+            results.append(c)
         else:
             results.append(None)
             uncached_indices.append(i)
@@ -207,11 +210,16 @@ def api_weather_grid():
                 inf = _moisture_budget_inference(daily, current, elevation)
                 results[idx] = inf
                 key = f"grid:{float(lat_list[idx]):.2f},{float(lon_list[idx]):.2f}"
-                _weather_cache[key] = (now, inf)
+                cache_response(key, inf, ttl=WEATHER_CACHE_TTL)
         except Exception:
             for j in uncached_indices:
                 if results[j] is None:
                     results[j] = {'condition': 'clear', 'reasons': ['Unable to fetch weather']}
+
+    # Backfill any still-empty slots (e.g. a partial upstream response).
+    for i in range(len(results)):
+        if results[i] is None:
+            results[i] = {'condition': 'clear', 'reasons': ['Unable to fetch weather']}
 
     return jsonify(results)
 
@@ -222,13 +230,16 @@ def api_weather_batch():
     if not locations:
         return jsonify([])
     pairs = [l.split(',') for l in locations.split('|') if ',' in l]
-    now = time.time()
     results = []
     uncached = []
     for lat, lon in pairs[:20]:
-        key = f"{float(lat):.2f},{float(lon):.2f}"
-        if key in _weather_cache and now - _weather_cache[key][0] < WEATHER_CACHE_TTL:
-            results.append(_weather_cache[key][1])
+        try:
+            key = f"{float(lat):.2f},{float(lon):.2f}"
+        except (ValueError, TypeError):
+            continue
+        c = cached_response(key, ttl=WEATHER_CACHE_TTL)
+        if c is not None:
+            results.append(c)
         else:
             uncached.append((lat, lon, len(results)))
             results.append(None)
@@ -248,13 +259,13 @@ def api_weather_batch():
                     result = {'lat': float(uncached[i][0]), 'lon': float(uncached[i][1]), 'temp_c': w.get('temperature'), 'windspeed': w.get('windspeed'), 'weathercode': w.get('weathercode')}
                     results[uncached[i][2]] = result
                     key = f"{float(uncached[i][0]):.2f},{float(uncached[i][1]):.2f}"
-                    _weather_cache[key] = (now, result)
+                    cache_response(key, result, ttl=WEATHER_CACHE_TTL)
             else:
                 w = data.get('current_weather', {})
                 result = {'lat': float(uncached[0][0]), 'lon': float(uncached[0][1]), 'temp_c': w.get('temperature'), 'windspeed': w.get('windspeed'), 'weathercode': w.get('weathercode')}
                 results[uncached[0][2]] = result
                 key = f"{float(uncached[0][0]):.2f},{float(uncached[0][1]):.2f}"
-                _weather_cache[key] = (now, result)
+                cache_response(key, result, ttl=WEATHER_CACHE_TTL)
         except Exception:
             for u in uncached:
                 if results[u[2]] is None:
@@ -339,5 +350,5 @@ def api_weather_history():
         }
         cache_response(wh_key, wx_result, ttl=1800)
         return jsonify(wx_result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return jsonify({'error': 'Weather data temporarily unavailable'}), 500

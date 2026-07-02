@@ -166,6 +166,9 @@
     </div>
     
     <script>
+    // Shared HTML-escaper for any user/third-party text placed into innerHTML.
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+
     // Quick Log Modal Logic
     (function() {
         const fab = document.getElementById('quickLogFab');
@@ -229,9 +232,9 @@
                     const data = await res.json();
                     if (!data.length) { qlSuggestions.style.display = 'none'; return; }
                     qlSuggestions.innerHTML = data.slice(0, 8).map(item => `
-                        <div class="suggestion" data-osm-type="${item.osm_type||''}" data-osm-id="${item.osm_id||''}" data-name="${item.name}" data-lat="${item.lat||''}" data-lon="${item.lon||''}">
-                            <div class="sug-name">${item.name}</div>
-                            <div class="sug-ctx">${item.context||''}</div>
+                        <div class="suggestion" data-osm-type="${esc(item.osm_type||'')}" data-osm-id="${esc(item.osm_id||'')}" data-name="${esc(item.name)}" data-lat="${esc(item.lat||'')}" data-lon="${esc(item.lon||'')}">
+                            <div class="sug-name">${esc(item.name)}</div>
+                            <div class="sug-ctx">${esc(item.context||'')}</div>
                         </div>
                     `).join('');
                     qlSuggestions.style.display = 'block';

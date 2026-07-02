@@ -21,87 +21,79 @@ def _pt_dist_m(p1, p2):
     return r * 2 * atan2(sqrt(a), sqrt(1-a))
 
 
-def _stitch_ways(way_geometries):
-    """Stitch multiple way geometries into a continuous line.
-    
-    Each way geometry is a list of {lat, lon} points. Ways connect when 
-    one's endpoint is near another's endpoint (shared OSM node = exact match,
-    but we use 15m tolerance for floating point / split nodes).
-    
-    Algorithm:
-    1. Start with the first way as the "chain"
-    2. Repeatedly find the unplaced way whose endpoint is closest to 
-       either end of the chain
-    3. Append/prepend (reversing if needed) to grow the chain
-    4. If no way connects within tolerance, start a new chain segment
+def _stitch_ways_multi(way_geometries, connect_threshold_m=60):
+    """Stitch way geometries into continuous chains (a MultiLineString).
+
+    Greedy: grow the current chain by whichever unplaced way's endpoint is
+    nearest either chain end (reversing as needed). When nothing connects
+    within the threshold, CLOSE the chain and start a new one — never
+    concatenate disconnected pieces (the old behavior drew long straight
+    'rubber band' lines across the map).
+
+    60 m tolerance: shared OSM nodes match at <1 m, but named trails are
+    routinely split by road crossings and short gaps.
+
+    Returns a list of chains, longest first; each chain is a point list.
     """
-    if not way_geometries:
+    ways = [list(g) for g in way_geometries if len(g) >= 2]
+    if not ways:
         return []
-    if len(way_geometries) == 1:
-        return way_geometries[0]
+    if len(ways) == 1:
+        return [ways[0]]
 
-    CONNECT_THRESHOLD_M = 15  # meters — shared nodes should be <1m, allow slack
-
-    remaining = [list(g) for g in way_geometries]
-    # Start chain with the first way
+    chains = []
+    remaining = ways
     chain = remaining.pop(0)
 
-    max_iterations = len(remaining) * 2  # safety valve
-    iterations = 0
-    while remaining and iterations < max_iterations:
-        iterations += 1
-        chain_start = chain[0]
-        chain_end = chain[-1]
-        
+    while True:
         best_idx = None
         best_dist = float('inf')
-        best_mode = None  # 'append', 'append_rev', 'prepend', 'prepend_rev'
+        best_mode = None
+        chain_start, chain_end = chain[0], chain[-1]
 
         for i, seg in enumerate(remaining):
-            if len(seg) < 2:
-                continue
-            seg_start = seg[0]
-            seg_end = seg[-1]
-
-            # Can this segment attach to the END of the chain?
-            d_end_start = _pt_dist_m(chain_end, seg_start)  # chain_end → seg_start (append as-is)
-            d_end_end = _pt_dist_m(chain_end, seg_end)      # chain_end → seg_end (append reversed)
-            # Can this segment attach to the START of the chain?
-            d_start_end = _pt_dist_m(chain_start, seg_end)  # seg_end → chain_start (prepend as-is)
-            d_start_start = _pt_dist_m(chain_start, seg_start)  # seg_start → chain_start (prepend reversed)
-
-            candidates = [
-                (d_end_start, 'append', i),
-                (d_end_end, 'append_rev', i),
-                (d_start_end, 'prepend', i),
-                (d_start_start, 'prepend_rev', i),
-            ]
-            for d, mode, idx in candidates:
+            for d, mode in ((_pt_dist_m(chain_end, seg[0]), 'append'),
+                            (_pt_dist_m(chain_end, seg[-1]), 'append_rev'),
+                            (_pt_dist_m(chain_start, seg[-1]), 'prepend'),
+                            (_pt_dist_m(chain_start, seg[0]), 'prepend_rev')):
                 if d < best_dist:
-                    best_dist = d
-                    best_idx = idx
-                    best_mode = mode
+                    best_dist, best_idx, best_mode = d, i, mode
 
-        if best_idx is None or best_dist > CONNECT_THRESHOLD_M:
-            # No connecting segment found within threshold — 
-            # just append remaining segments with a gap
-            for seg in remaining:
-                chain.extend(seg)
+        if best_idx is not None and best_dist <= connect_threshold_m:
+            seg = remaining.pop(best_idx)
+            if best_mode == 'append':
+                chain.extend(seg[1:] if best_dist < 1 else seg)
+            elif best_mode == 'append_rev':
+                seg.reverse()
+                chain.extend(seg[1:] if best_dist < 1 else seg)
+            elif best_mode == 'prepend':
+                chain = seg + (chain[1:] if best_dist < 1 else chain)
+            else:
+                seg.reverse()
+                chain = seg + (chain[1:] if best_dist < 1 else chain)
+            if remaining:
+                continue
+
+        chains.append(chain)
+        if not remaining:
             break
+        chain = remaining.pop(0)
 
-        seg = remaining.pop(best_idx)
-        if best_mode == 'append':
-            chain.extend(seg[1:])  # skip first point (duplicate of chain end)
-        elif best_mode == 'append_rev':
-            seg.reverse()
-            chain.extend(seg[1:])
-        elif best_mode == 'prepend':
-            chain = seg + chain[1:]  # skip first point of old chain (dup of seg end)
-        elif best_mode == 'prepend_rev':
-            seg.reverse()
-            chain = seg + chain[1:]
+    chains.sort(key=len, reverse=True)
+    return chains
 
-    return chain
+
+def _stitch_ways(way_geometries):
+    """Back-compat single-chain view: the LONGEST stitched chain."""
+    chains = _stitch_ways_multi(way_geometries)
+    return chains[0] if chains else []
+
+
+def _chain_length_km(chain):
+    total = 0.0
+    for i in range(len(chain) - 1):
+        total += _pt_dist_m(chain[i], chain[i + 1]) / 1000.0
+    return total
 
 
 def _reverse_geocode(lat, lon):
@@ -233,25 +225,23 @@ out geom tags;'''
             tags = el.get('tags', {})
             way_els = []
 
-        geometry = []
         if osm_type == 'way':
-            way_geos = []
-            for seg in elements:
-                if 'geometry' in seg:
-                    way_geos.append([{'lat': p['lat'], 'lon': p['lon']} for p in seg['geometry']])
-            if len(way_geos) > 1:
-                geometry = _stitch_ways(way_geos)
-            elif way_geos:
-                geometry = way_geos[0]
-        elif osm_type == 'relation':
-            way_geos = []
-            for way in way_els:
-                if 'geometry' in way:
-                    way_geos.append([{'lat': p['lat'], 'lon': p['lon']} for p in way['geometry']])
-            if len(way_geos) > 1:
-                geometry = _stitch_ways(way_geos)
-            elif way_geos:
-                geometry = way_geos[0]
+            src_els = elements
+        else:
+            src_els = way_els
+        way_geos = []
+        for seg in src_els:
+            if 'geometry' in seg:
+                way_geos.append([{'lat': p['lat'], 'lon': p['lon']} for p in seg['geometry']])
+        chains = _stitch_ways_multi(way_geos)
+        # dedupe consecutive duplicate points per chain
+        for ci, ch in enumerate(chains):
+            deduped = [ch[0]]
+            for pt in ch[1:]:
+                if pt['lat'] != deduped[-1]['lat'] or pt['lon'] != deduped[-1]['lon']:
+                    deduped.append(pt)
+            chains[ci] = deduped
+        geometry = chains[0] if chains else []   # longest chain (pin/elevation/back-compat)
 
         lat = lon = None
         if geometry:
@@ -261,26 +251,10 @@ out geom tags;'''
             lat = el['center']['lat']
             lon = el['center']['lon']
 
-        if len(geometry) > 1:
-            deduped = [geometry[0]]
-            for pt in geometry[1:]:
-                if pt['lat'] != deduped[-1]['lat'] or pt['lon'] != deduped[-1]['lon']:
-                    deduped.append(pt)
-            geometry = deduped
-
+        # distance: sum over ALL stitched chains (no rubber-band jumps to hide now)
         distance_km = None
-        if len(geometry) > 1:
-            total = 0
-            for i in range(len(geometry) - 1):
-                lat1, lon1 = radians(geometry[i]['lat']), radians(geometry[i]['lon'])
-                lat2, lon2 = radians(geometry[i+1]['lat']), radians(geometry[i+1]['lon'])
-                dlat = lat2 - lat1
-                dlon = lon2 - lon1
-                a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
-                seg = 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
-                if seg < 0.5:
-                    total += seg
-            distance_km = round(total, 1)
+        if chains and any(len(c) > 1 for c in chains):
+            distance_km = round(sum(_chain_length_km(c) for c in chains), 1)
 
         result = {
             'osm_type': osm_type,
@@ -290,6 +264,7 @@ out geom tags;'''
             'lat': lat,
             'lon': lon,
             'geometry': geometry,
+            'geometry_segments': chains,
             'difficulty': tags.get('sac_scale', ''),
             'surface': tags.get('surface', ''),
             'distance_km': distance_km,

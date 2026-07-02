@@ -7,7 +7,7 @@ python -c "from database import init_db; init_db()"
 
 # Production: Gunicorn with 4 workers
 exec gunicorn app:app \
-    --bind 0.0.0.0:8095 \
+    --bind 0.0.0.0:8098 \
     --workers 4 \
     --threads 2 \
     --worker-class gthread \

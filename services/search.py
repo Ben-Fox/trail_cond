@@ -3,6 +3,7 @@ import time
 from flask import Blueprint, request, jsonify
 
 from services import http_session
+from services.cache import cached_response, cache_response
 from services.overpass import overpass_query, parse_osm_trails, get_overpass_cache, CACHE_TTL
 from services.usgs import merge_usgs_into_osm, fetch_usgs_for_bbox
 
@@ -87,7 +88,6 @@ def geocode(query):
     }
 
 
-_autocomplete_cache = {}
 AUTOCOMPLETE_TTL = 300
 
 
@@ -97,12 +97,11 @@ def api_autocomplete():
     if len(q) < 2:
         return jsonify([])
 
-    ac_key = q.lower()
+    ac_key = f"ac:{q.lower()}"
     now = time.time()
-    if ac_key in _autocomplete_cache:
-        ts, data = _autocomplete_cache[ac_key]
-        if now - ts < AUTOCOMPLETE_TTL:
-            return jsonify(data)
+    cached = cached_response(ac_key, ttl=AUTOCOMPLETE_TTL)
+    if cached is not None:
+        return jsonify(cached)
 
     results = []
 
@@ -211,7 +210,7 @@ def api_autocomplete():
                         'osm_id': osm_id,
                     })
 
-    _autocomplete_cache[ac_key] = (now, results)
+    cache_response(ac_key, results, ttl=AUTOCOMPLETE_TTL)
     return jsonify(results)
 
 
@@ -297,30 +296,31 @@ out center tags 20;'''
 
         elif bbox:
             parts = bbox.split(',')
-            if len(parts) == 4:
-                s, w, n, e = parts
-                usgs_future = fetch_usgs_for_bbox(float(s), float(w), float(n), float(e), trail_type)
-                query = f'''[out:json][timeout:25];
+            if len(parts) != 4:
+                return jsonify([])
+            s, w, n, e = (float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]))
+            usgs_future = fetch_usgs_for_bbox(s, w, n, e, trail_type)
+            query = f'''[out:json][timeout:25];
 (
   way{tp['ways']}["name"]({s},{w},{n},{e});
   relation{tp['rels']}["name"]({s},{w},{n},{e});
 );
 out center tags 100;'''
-                results = parse_osm_trails(overpass_query(query))
-                try:
-                    usgs_trails = usgs_future.result(timeout=3)
-                    results = merge_usgs_into_osm(results, usgs_trails)
-                except Exception:
-                    pass
-                return jsonify(results)
+            results = parse_osm_trails(overpass_query(query))
+            try:
+                usgs_trails = usgs_future.result(timeout=3)
+                results = merge_usgs_into_osm(results, usgs_trails)
+            except Exception:
+                pass
+            return jsonify(results)
         elif lat and lon:
+            latf, lonf = float(lat), float(lon)
             usgs_future = fetch_usgs_for_bbox(
-                float(lat) - 0.1, float(lon) - 0.1,
-                float(lat) + 0.1, float(lon) + 0.1, trail_type)
+                latf - 0.1, lonf - 0.1, latf + 0.1, lonf + 0.1, trail_type)
             query = f'''[out:json][timeout:25];
 (
-  way{tp['ways']}["name"](around:8000,{lat},{lon});
-  relation{tp['rels']}["name"](around:8000,{lat},{lon});
+  way{tp['ways']}["name"](around:8000,{latf},{lonf});
+  relation{tp['rels']}["name"](around:8000,{latf},{lonf});
 );
 out center tags;'''
         elif state and state in STATE_NAMES:
@@ -342,5 +342,5 @@ out center tags 50;'''
             except Exception:
                 pass
         return jsonify(results[:100])
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return jsonify({'error': 'Search temporarily unavailable'}), 500

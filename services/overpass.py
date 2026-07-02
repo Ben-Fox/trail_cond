@@ -1,6 +1,7 @@
 import hashlib
 import time
 import logging
+import threading
 from math import radians, sin, cos, sqrt, atan2
 
 from services import http_session
@@ -9,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Overpass cache
 _overpass_cache = {}
+_cache_lock = threading.Lock()
 CACHE_TTL = 600  # 10 minutes
 
 OVERPASS_SERVERS = [
@@ -20,8 +22,9 @@ _last_overpass_request = 0
 
 
 def get_overpass_cache():
-    """Expose cache for autocomplete to read."""
-    return _overpass_cache
+    """Expose a snapshot of the cache for autocomplete to read."""
+    with _cache_lock:
+        return dict(_overpass_cache)
 
 
 def _haversine_km(lat1, lon1, lat2, lon2):
@@ -59,13 +62,14 @@ def overpass_query(query):
     cache_key = hashlib.md5(query.encode()).hexdigest()
     now = time.time()
 
-    if len(_overpass_cache) > 100:
-        stale = [k for k, (ts, _) in _overpass_cache.items() if now - ts > CACHE_TTL]
-        for k in stale:
-            del _overpass_cache[k]
-
-    if cache_key in _overpass_cache:
-        ts, data = _overpass_cache[cache_key]
+    with _cache_lock:
+        if len(_overpass_cache) > 100:
+            stale = [k for k, (ts, _) in _overpass_cache.items() if now - ts > CACHE_TTL]
+            for k in stale:
+                _overpass_cache.pop(k, None)
+        entry = _overpass_cache.get(cache_key)
+    if entry is not None:
+        ts, data = entry
         if now - ts < CACHE_TTL:
             return data
 
@@ -84,7 +88,8 @@ def overpass_query(query):
                 continue
             r.raise_for_status()
             data = r.json()
-            _overpass_cache[cache_key] = (time.time(), data)
+            with _cache_lock:
+                _overpass_cache[cache_key] = (time.time(), data)
             return data
         except Exception as e:
             last_err = e

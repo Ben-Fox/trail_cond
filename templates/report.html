@@ -169,9 +169,9 @@ searchInput.addEventListener('input', function() {
             if (!data.length) { suggestionsDiv.style.display = 'none'; return; }
             
             suggestionsDiv.innerHTML = data.map(item => `
-                <div class="suggestion" data-type="${item.type}" data-osm-type="${item.osm_type || ''}" data-osm-id="${item.osm_id || ''}" data-name="${item.name}" data-lat="${item.lat || ''}" data-lon="${item.lon || ''}">
-                    <div class="sug-name">${item.type === 'trail' ? '🥾 ' : '📍 '}${item.name}</div>
-                    <div class="sug-ctx">${item.context || ''}</div>
+                <div class="suggestion" data-type="${esc(item.type)}" data-osm-type="${esc(item.osm_type || '')}" data-osm-id="${esc(item.osm_id || '')}" data-name="${esc(item.name)}" data-lat="${esc(item.lat || '')}" data-lon="${esc(item.lon || '')}">
+                    <div class="sug-name">${item.type === 'trail' ? '🥾 ' : '📍 '}${esc(item.name)}</div>
+                    <div class="sug-ctx">${esc(item.context || '')}</div>
                 </div>
             `).join('');
             suggestionsDiv.style.display = 'block';
@@ -199,9 +199,9 @@ searchInput.addEventListener('input', function() {
                             const trails = Array.isArray(raw) ? raw : (raw.trails || []);
                             if (trails.length) {
                                 suggestionsDiv.innerHTML = trails.slice(0, 15).map(t => `
-                                    <div class="suggestion" data-type="trail" data-osm-type="${t.osm_type}" data-osm-id="${t.osm_id}" data-name="${t.name}">
-                                        <div class="sug-name">🥾 ${t.name}</div>
-                                        <div class="sug-ctx">${t.surface || ''} ${t.difficulty || ''}</div>
+                                    <div class="suggestion" data-type="trail" data-osm-type="${esc(t.osm_type)}" data-osm-id="${esc(t.osm_id)}" data-name="${esc(t.name)}">
+                                        <div class="sug-name">🥾 ${esc(t.name)}</div>
+                                        <div class="sug-ctx">${esc(t.surface || '')} ${esc(t.difficulty || '')}</div>
                                     </div>
                                 `).join('');
                                 suggestionsDiv.style.display = 'block';

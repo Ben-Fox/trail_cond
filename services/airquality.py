@@ -12,6 +12,7 @@ import io
 import time
 import math
 import logging
+import threading
 from flask import Blueprint, Response, request, jsonify
 
 from services import http_session
@@ -28,6 +29,8 @@ AQ_TILE_CACHE_TTL = 1800  # 30 min
 # AQI point cache: "lat,lon" → (timestamp, aqi_data)
 _aq_point_cache = {}
 AQ_POINT_CACHE_TTL = 900  # 15 min
+
+_aq_lock = threading.Lock()
 
 # Official EPA AQI color ramp (exact RGB values from EPA style guide)
 # Same colors used by AirNow, Weather.com, IQAir, etc.
@@ -104,8 +107,10 @@ def _fetch_aqi_grid(lat_s, lat_n, lon_w, lon_e, samples=4):
     uncached = []
     for i, (lat, lon) in enumerate(points):
         key = f"{lat:.2f},{lon:.2f}"
-        if key in _aq_point_cache and now - _aq_point_cache[key][0] < AQ_POINT_CACHE_TTL:
-            results.append((lat, lon, _aq_point_cache[key][1]))
+        with _aq_lock:
+            entry = _aq_point_cache.get(key)
+        if entry is not None and now - entry[0] < AQ_POINT_CACHE_TTL:
+            results.append((lat, lon, entry[1]))
         else:
             results.append(None)
             uncached.append(i)
@@ -129,12 +134,19 @@ def _fetch_aqi_grid(lat_s, lat_n, lon_w, lon_e, samples=4):
                 lat, lon = points[idx]
                 results[idx] = (lat, lon, aqi)
                 key = f"{lat:.2f},{lon:.2f}"
-                _aq_point_cache[key] = (now, aqi)
+                with _aq_lock:
+                    _aq_point_cache[key] = (now, aqi)
         except Exception as e:
             logger.warning(f'AQ tile fetch failed: {e}')
             for j in uncached:
                 if results[j] is None:
                     results[j] = (points[j][0], points[j][1], 0)
+
+    # Backfill any slots a partial upstream response left empty, so no None
+    # reaches the tile renderer (which would raise and 500 the tile route).
+    for i in range(len(results)):
+        if results[i] is None:
+            results[i] = (points[i][0], points[i][1], 0)
 
     return results
 
@@ -196,29 +208,36 @@ def airquality_tile(z, x, y):
 
     cache_key = (z, x, y)
     now = time.time()
-    if cache_key in _aq_tile_cache:
-        ts, png_bytes = _aq_tile_cache[cache_key]
-        if now - ts < AQ_TILE_CACHE_TTL:
-            return Response(png_bytes, mimetype='image/png',
-                            headers={'Cache-Control': f'public, max-age={AQ_TILE_CACHE_TTL}'})
+    with _aq_lock:
+        entry = _aq_tile_cache.get(cache_key)
+    if entry is not None and now - entry[0] < AQ_TILE_CACHE_TTL:
+        return Response(entry[1], mimetype='image/png',
+                        headers={'Cache-Control': f'public, max-age={AQ_TILE_CACHE_TTL}'})
 
-    # Prune old cache
-    if len(_aq_tile_cache) > 2000:
-        stale = [k for k, (ts, _) in _aq_tile_cache.items() if now - ts > AQ_TILE_CACHE_TTL]
-        for k in stale:
-            del _aq_tile_cache[k]
+    try:
+        lat_s, lat_n, lon_w, lon_e = _tile_to_bbox(z, x, y)
+        samples = 3 if z <= 7 else 4 if z <= 10 else 5
 
-    lat_s, lat_n, lon_w, lon_e = _tile_to_bbox(z, x, y)
-    samples = 3 if z <= 7 else 4 if z <= 10 else 5
+        scored = _fetch_aqi_grid(lat_s, lat_n, lon_w, lon_e, samples=samples)
+        img = _render_aq_tile(scored, lat_s, lat_n, lon_w, lon_e)
 
-    scored = _fetch_aqi_grid(lat_s, lat_n, lon_w, lon_e, samples=samples)
-    img = _render_aq_tile(scored, lat_s, lat_n, lon_w, lon_e)
+        buf = io.BytesIO()
+        img.save(buf, 'PNG', optimize=True)
+        png_bytes = buf.getvalue()
+    except Exception as e:
+        logger.warning(f'AQ tile render failed for {z}/{x}/{y}: {e}')
+        blank = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+        buf = io.BytesIO()
+        blank.save(buf, 'PNG', optimize=True)
+        return Response(buf.getvalue(), mimetype='image/png',
+                        headers={'Cache-Control': 'public, max-age=300'})
 
-    buf = io.BytesIO()
-    img.save(buf, 'PNG', optimize=True)
-    png_bytes = buf.getvalue()
-
-    _aq_tile_cache[cache_key] = (now, png_bytes)
+    with _aq_lock:
+        _aq_tile_cache[cache_key] = (now, png_bytes)
+        if len(_aq_tile_cache) > 2000:
+            stale = [k for k, (ts, _) in _aq_tile_cache.items() if now - ts > AQ_TILE_CACHE_TTL]
+            for k in stale:
+                _aq_tile_cache.pop(k, None)
 
     return Response(png_bytes, mimetype='image/png',
                     headers={'Cache-Control': f'public, max-age={AQ_TILE_CACHE_TTL}'})
@@ -232,7 +251,10 @@ def api_airquality():
     if not lat or not lon:
         return jsonify({'error': 'lat/lon required'}), 400
 
-    cache_key = f"aq:{float(lat):.2f},{float(lon):.2f}"
+    try:
+        cache_key = f"aq:{float(lat):.2f},{float(lon):.2f}"
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid lat/lon'}), 400
     cached = cached_response(cache_key, ttl=900)
     if cached:
         return jsonify(cached)
@@ -259,5 +281,5 @@ def api_airquality():
         }
         cache_response(cache_key, result, ttl=900)
         return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return jsonify({'error': 'Air quality data temporarily unavailable'}), 500

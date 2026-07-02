@@ -5,6 +5,7 @@ and returns current water levels (gage height + streamflow).
 
 import time
 import logging
+import threading
 from flask import Blueprint, request, jsonify
 from services import http_session
 
@@ -17,6 +18,15 @@ USGS_URL = 'https://waterservices.usgs.gov/nwis/iv/'
 # Cache: (lat,lon) rounded to 0.1° -> (timestamp, data)
 _stream_cache = {}
 CACHE_TTL = 900  # 15 minutes
+_cache_lock = threading.Lock()
+
+
+def _safe_float(v):
+    """Parse a float, returning None for non-numeric USGS qualifiers ('Ice', '')."""
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return None
 
 
 def _gauge_level_label(gage_height):
@@ -59,8 +69,10 @@ def fetch_nearby_gauges(lat, lon, radius_deg=0.15):
     """Fetch USGS stream gauges near a point. Returns list of gauge dicts."""
     cache_key = (round(lat, 1), round(lon, 1))
     now = time.time()
-    if cache_key in _stream_cache:
-        ts, data = _stream_cache[cache_key]
+    with _cache_lock:
+        entry = _stream_cache.get(cache_key)
+    if entry is not None:
+        ts, data = entry
         if now - ts < CACHE_TTL:
             return data
 
@@ -83,13 +95,16 @@ def fetch_nearby_gauges(lat, lon, radius_deg=0.15):
         # Group by site
         sites = {}
         for ts_item in time_series:
-            info = ts_item['sourceInfo']
-            site_code = info['siteCode'][0]['value']
-            var_code = ts_item['variable']['variableCode'][0]['value']
-            loc = info['geoLocation']['geogLocation']
-            values = ts_item['values'][0]['value']
-            latest = values[-1] if values else {}
-            val = latest.get('value')
+            try:
+                info = ts_item['sourceInfo']
+                site_code = info['siteCode'][0]['value']
+                var_code = ts_item['variable']['variableCode'][0]['value']
+                loc = info['geoLocation']['geogLocation']
+                values = ts_item['values'][0]['value']
+                latest = values[-1] if values else {}
+                val = latest.get('value')
+            except (KeyError, IndexError, TypeError):
+                continue  # skip one malformed site, don't drop the whole batch
 
             if site_code not in sites:
                 sites[site_code] = {
@@ -105,22 +120,25 @@ def fetch_nearby_gauges(lat, lon, radius_deg=0.15):
                     'datetime': latest.get('dateTime', ''),
                 }
 
-            if var_code == '00065' and val and float(val) != -999999:
-                h = float(val)
-                label, color = _gauge_level_label(h)
-                sites[site_code]['gage_height'] = round(h, 2)
-                sites[site_code]['gage_height_label'] = label
-                sites[site_code]['gage_height_color'] = color
-            elif var_code == '00060' and val and float(val) != -999999:
-                f = float(val)
-                sites[site_code]['streamflow'] = round(f, 1)
-                sites[site_code]['streamflow_label'] = _flow_label(f)
+            if var_code == '00065':
+                h = _safe_float(val)
+                if h is not None and h != -999999:
+                    label, color = _gauge_level_label(h)
+                    sites[site_code]['gage_height'] = round(h, 2)
+                    sites[site_code]['gage_height_label'] = label
+                    sites[site_code]['gage_height_color'] = color
+            elif var_code == '00060':
+                f = _safe_float(val)
+                if f is not None and f != -999999:
+                    sites[site_code]['streamflow'] = round(f, 1)
+                    sites[site_code]['streamflow_label'] = _flow_label(f)
 
         result = sorted(sites.values(), key=lambda s: (
             (s['lat'] - lat) ** 2 + (s['lon'] - lon) ** 2
         ))[:8]  # max 8 nearest
 
-        _stream_cache[cache_key] = (now, result)
+        with _cache_lock:
+            _stream_cache[cache_key] = (now, result)
         return result
 
     except Exception as e:

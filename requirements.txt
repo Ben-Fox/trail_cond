@@ -3,3 +3,4 @@ requests
 gunicorn
 flask-compress
 Pillow
+numpy<2

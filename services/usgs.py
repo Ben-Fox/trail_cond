@@ -1,6 +1,7 @@
 import hashlib
 import time
 import logging
+import threading
 import requests
 from math import radians, sin, cos, sqrt, atan2
 from concurrent.futures import ThreadPoolExecutor
@@ -13,6 +14,7 @@ usgs_session = requests.Session()
 usgs_session.headers.update({'User-Agent': 'TrailCondish/1.0'})
 
 _usgs_cache = {}
+_cache_lock = threading.Lock()
 USGS_CACHE_TTL = 600  # 10 minutes
 _usgs_executor = ThreadPoolExecutor(max_workers=2)
 
@@ -74,15 +76,16 @@ def usgs_query_bbox(south, west, north, east, trail_type='all', return_geometry=
     cache_key = _usgs_cache_key(params)
     now = time.time()
 
-    if cache_key in _usgs_cache:
-        ts, data = _usgs_cache[cache_key]
+    with _cache_lock:
+        entry = _usgs_cache.get(cache_key)
+        if len(_usgs_cache) > 200:
+            stale = [k for k, (ts, _) in _usgs_cache.items() if now - ts > USGS_CACHE_TTL]
+            for k in stale:
+                _usgs_cache.pop(k, None)
+    if entry is not None:
+        ts, data = entry
         if now - ts < USGS_CACHE_TTL:
             return data
-
-    if len(_usgs_cache) > 200:
-        stale = [k for k, (ts, _) in _usgs_cache.items() if now - ts > USGS_CACHE_TTL]
-        for k in stale:
-            del _usgs_cache[k]
 
     try:
         r = usgs_session.get(USGS_TRAILS_URL, params=params, timeout=5)
@@ -105,7 +108,8 @@ def usgs_query_bbox(south, west, north, east, trail_type='all', return_geometry=
                 props = feat.get('attributes', {})
                 trails.append(_parse_usgs_trail(props))
 
-        _usgs_cache[cache_key] = (now, trails)
+        with _cache_lock:
+            _usgs_cache[cache_key] = (now, trails)
         return trails
     except Exception as e:
         logger.warning(f'USGS query failed: {e}')

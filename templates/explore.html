@@ -171,7 +171,7 @@ async function updateMarkerConditions(trails) {
                 if (t.way_ids && t.way_ids.length > 1) trailUrl += `?way_ids=${t.way_ids.join(',')}`;
                 const diff = difficultyLabel(t.difficulty);
                 marker.setPopupContent(
-                    `<b>${t.name}</b><br>` +
+                    `<b>${esc(t.name)}</b><br>` +
                     `<span style="color:${condColor};font-weight:700">${condLabel}</span><br>` +
                     `<small style="color:#666">${reasons}</small><br>` +
                     `${diff ? diff + '<br>' : ''}` +
@@ -496,11 +496,11 @@ async function fetchAutocomplete(q) {
                 ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l4-8 4 6 4-10 6 12"/></svg>'
                 : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>';
             const label = item.type === 'trail' ? 'Trail' : 'Area';
-            return `<div class="ac-item" data-type="${item.type}" data-osm-type="${item.osm_type || ''}" data-osm-id="${item.osm_id || ''}" data-name="${item.name}" data-lat="${item.lat || ''}" data-lon="${item.lon || ''}">
+            return `<div class="ac-item" data-type="${esc(item.type)}" data-osm-type="${esc(item.osm_type || '')}" data-osm-id="${esc(item.osm_id || '')}" data-name="${esc(item.name)}" data-lat="${esc(item.lat || '')}" data-lon="${esc(item.lon || '')}">
                 <span class="ac-icon">${icon}</span>
                 <div class="ac-text">
-                    <span class="ac-name">${item.name}</span>
-                    ${item.context ? `<span class="ac-context">${item.context}</span>` : ''}
+                    <span class="ac-name">${esc(item.name)}</span>
+                    ${item.context ? `<span class="ac-context">${esc(item.context)}</span>` : ''}
                 </div>
                 <span class="ac-label ac-label-${item.type}">${label}</span>
             </div>`;
@@ -637,12 +637,17 @@ async function loadTrailRoute(trail) {
             } catch(e) {}
         }
         
-        const latlngs = data.geometry.map(p => [p.lat, p.lon]);
-        
-        // Draw with casing for visibility
-        const casing = L.polyline(latlngs, {color: '#fff', weight: 7, opacity: 0.6});
-        const line = L.polyline(latlngs, {color: color, weight: 4, opacity: 0.9});
-        activeRouteLayer = L.layerGroup([casing, line]).addTo(map);
+        // MultiLineString chains (no rubber-band lines across gaps)
+        const chains = (data.geometry_segments && data.geometry_segments.length)
+            ? data.geometry_segments : [data.geometry];
+        const layers = [];
+        chains.forEach(chain => {
+            if (!chain || chain.length < 2) return;
+            const latlngs = chain.map(p => [p.lat, p.lon]);
+            layers.push(L.polyline(latlngs, {color: '#fff', weight: 7, opacity: 0.6}));   // casing
+            layers.push(L.polyline(latlngs, {color: color, weight: 4, opacity: 0.9}));
+        });
+        activeRouteLayer = L.layerGroup(layers).addTo(map);
         
         // Build condition label
         let condLabel = '';
@@ -660,7 +665,7 @@ async function loadTrailRoute(trail) {
         const dist = data.distance_km ? `${data.distance_km} km` : '';
         L.popup()
             .setLatLng(latlngs[Math.floor(latlngs.length / 2)])
-            .setContent(`<b>${trail.name}</b>${condLabel}<br>${diff ? diff + ' · ' : ''}${dist}<br><a href="${trailUrl}">View Trail →</a>`)
+            .setContent(`<b>${esc(trail.name)}</b>${condLabel}<br>${diff ? diff + ' · ' : ''}${dist}<br><a href="${trailUrl}">View Trail →</a>`)
             .openOn(map);
         
         map.fitBounds(L.latLngBounds(latlngs), {padding: [40, 40]});
@@ -694,15 +699,15 @@ async function renderResults(trails, skipFitBounds) {
         html += `<div class="trail-card" data-trail-id="${trailId}" onclick="window.location='${trailUrl}'">
             <img class="tc-pin" src="${pinSrc}" alt="${pinCond}" data-lat="${t.lat || ''}" data-lon="${t.lon || ''}">
             <div class="tc-content">
-                <h3 class="tc-name">${t.name}</h3>
+                <h3 class="tc-name">${esc(t.name)}</h3>
                 <div class="tc-tags">
                     ${diff ? `<span class="tag tag-diff">${diff}</span>` : ''}
                     ${lengthTag}
-                    ${t.surface ? `<span class="tag">${t.surface}</span>` : ''}
+                    ${t.surface ? `<span class="tag">${esc(t.surface)}</span>` : ''}
                     ${t.distance && !t.length_miles ? `<span class="tag">${t.distance}</span>` : ''}
                     ${actIcons}
                 </div>
-                ${t.desc ? `<p class="tc-desc">${t.desc}</p>` : ''}
+                ${t.desc ? `<p class="tc-desc">${esc(t.desc)}</p>` : ''}
                 <a href="${trailUrl}" class="tc-link">View Trail →</a>
             </div>
         </div>`;
@@ -718,9 +723,9 @@ async function renderResults(trails, skipFitBounds) {
                 const condLabel = cached.condition.charAt(0).toUpperCase() + cached.condition.slice(1);
                 const condColors = {clear:'#2d6a4f',dry:'#2d6a4f',wet:'#b08968',muddy:'#7f5539',snowy:'#4a90d9',icy:'#c44536'};
                 const reasons = (cached.reasons || []).slice(0, 2).join('<br>');
-                popupHtml = `<b>${t.name}</b><br><span style="color:${condColors[cached.condition] || '#2d6a4f'};font-weight:700">${condLabel}</span><br><small style="color:#666">${reasons}</small><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`;
+                popupHtml = `<b>${esc(t.name)}</b><br><span style="color:${condColors[cached.condition] || '#2d6a4f'};font-weight:700">${condLabel}</span><br><small style="color:#666">${reasons}</small><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`;
             } else {
-                popupHtml = `<b>${t.name}</b><br><small style="color:#888">Loading conditions...</small><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`;
+                popupHtml = `<b>${esc(t.name)}</b><br><small style="color:#888">Loading conditions...</small><br>${diff ? diff + '<br>' : ''}<a href="${trailUrl}">View Trail</a><br><small style="color:#888">Click pin to show route</small>`;
             }
             const m = L.marker([t.lat, t.lon], {icon: icon})
                 .bindPopup(popupHtml);

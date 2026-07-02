@@ -6,6 +6,7 @@ and matches them to nearby trails by park location.
 import time
 import math
 import logging
+import threading
 from flask import Blueprint, request, jsonify
 from services import http_session
 
@@ -23,7 +24,8 @@ CACHE_TTL = 1800  # 30 minutes
 # Park location cache: park_code -> {lat, lon, name}
 _park_cache = {}
 PARK_CACHE_TTL = 86400  # 24 hours
-_park_cache_ts = 0
+_park_loaded = {}  # state_code -> last load timestamp (per-state, so a second state still loads)
+_park_lock = threading.Lock()
 
 
 ALERT_ICONS = {
@@ -78,12 +80,13 @@ def _state_from_coords(lat, lon):
 
 
 def _load_park_locations(state_code):
-    """Load park locations for a state from NPS API."""
-    global _park_cache_ts
+    """Load park locations for a state from NPS API (cached per state)."""
     now = time.time()
 
-    # Check if we need to refresh
-    if now - _park_cache_ts < PARK_CACHE_TTL and _park_cache:
+    # Refresh this state only if its parks haven't been loaded recently.
+    with _park_lock:
+        loaded_ts = _park_loaded.get(state_code, 0)
+    if now - loaded_ts < PARK_CACHE_TTL:
         return
 
     try:
@@ -107,7 +110,8 @@ def _load_park_locations(state_code):
                     }
                 except (ValueError, KeyError):
                     pass
-        _park_cache_ts = now
+        with _park_lock:
+            _park_loaded[state_code] = now
     except Exception as e:
         logger.error(f"NPS park location error: {e}")
 
