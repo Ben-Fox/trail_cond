@@ -608,6 +608,7 @@ async function fetchAutocomplete(q) {
 // --- Search ---
 async function doSearch() {
     userMovedSinceSearch = false;
+    pendingAreaSearch = false;
     const q = document.getElementById('searchInput').value;
     const state = document.getElementById('stateFilter').value;
     const params = new URLSearchParams();
@@ -635,13 +636,15 @@ async function doSearch() {
             return;
         }
         if (!trails.length) {
-            // Still fly to the searched location even if no trails found —
-            // unless the user already moved on while we were searching
+            // Still fly to the searched location even if the padded geocode box
+            // found nothing; the auto area-search on arrival may still turn up trails.
             if (geoBbox && !userMovedSinceSearch) {
                 programmaticMove = true;
+                pendingAreaSearch = true;
                 map.flyToBounds([[geoBbox[0], geoBbox[2]], [geoBbox[1], geoBbox[3]]], {padding: [50,50], maxZoom: 14, duration: 1.2});
             } else if (center && !userMovedSinceSearch) {
                 programmaticMove = true;
+                pendingAreaSearch = true;
                 map.flyTo([center.lat, center.lon], 12, {duration: 1.2});
             }
             document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found</p>';
@@ -650,15 +653,18 @@ async function doSearch() {
         }
         
         // Fly to searched location — but never yank the map away from a user
-        // who kept exploring while the (slow) search was in flight
+        // who kept exploring while the (slow) search was in flight. On arrival,
+        // auto-search the viewport so trails for the new area load on their own.
         if (geoBbox && !userMovedSinceSearch) {
             programmaticMove = true;
+            pendingAreaSearch = true;
             map.flyToBounds([[geoBbox[0], geoBbox[2]], [geoBbox[1], geoBbox[3]]], {padding: [50,50], maxZoom: 14, duration: 1.2});
         } else if (center && !userMovedSinceSearch) {
             programmaticMove = true;
+            pendingAreaSearch = true;
             map.flyTo([center.lat, center.lon], 12, {duration: 1.2});
         }
-        
+
         currentTrails = trails;
         sessionStorage.setItem('trailcondish_results', JSON.stringify(trails));
         await renderResults(trails, !!(center || geoBbox)); // skip fitBounds if we already flew
@@ -819,6 +825,7 @@ async function renderResults(trails, skipFitBounds) {
     
     if (bounds.length && !skipFitBounds) {
         programmaticMove = true;
+        pendingAreaSearch = false; // this fit is not a place-search fly; don't auto-search on its moveend
         map.fitBounds(bounds, {padding: [30, 30]});
     }
     
@@ -881,10 +888,18 @@ if (savedMap) {
 
 // Show "Search This Area" button only after USER pans/zooms (not programmatic)
 const searchMapBtn = document.getElementById('searchMapBtn');
+// Set true when a place search flies the map here so trails auto-load on arrival.
+let pendingAreaSearch = false;
 map.on('moveend', () => {
     if (programmaticMove) {
         programmaticMove = false;
         searchMapBtn.style.display = 'none';
+        // A place search just flew us here — search this viewport for trails
+        // automatically instead of making the user pan and click "Search This Area".
+        if (pendingAreaSearch) {
+            pendingAreaSearch = false;
+            searchThisArea();
+        }
         return;
     }
     userMovedSinceSearch = true;
@@ -934,13 +949,15 @@ function prefetchWeatherGrid() {
     }, 500); // debounce 500ms after pan stops
 }
 
-searchMapBtn.addEventListener('click', async () => {
+// Search the trails inside the current map viewport. Used both by the
+// "Search This Area" button and automatically after a place search flies here.
+async function searchThisArea() {
     const bounds = map.getBounds();
     const bbox = `${bounds.getSouth().toFixed(5)},${bounds.getWest().toFixed(5)},${bounds.getNorth().toFixed(5)},${bounds.getEast().toFixed(5)}`;
     searchMapBtn.style.display = 'none';
     searchMapBtn.innerHTML = '<div class="spinner-small"></div> Searching...';
     document.getElementById('resultsList').innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching this area...</p></div>';
-    
+
     try {
         const typeParam = activeTrailType !== 'all' ? `&type=${activeTrailType}` : '';
         const res = await fetch(`/api/search?bbox=${encodeURIComponent(bbox)}${typeParam}`);
@@ -958,7 +975,9 @@ searchMapBtn.addEventListener('click', async () => {
     } finally {
         searchMapBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> Search This Area`;
     }
-});
+}
+
+searchMapBtn.addEventListener('click', searchThisArea);
 
 document.getElementById('searchBtn').addEventListener('click', doSearch);
 

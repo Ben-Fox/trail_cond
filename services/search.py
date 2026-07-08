@@ -60,26 +60,32 @@ def _sanitize_overpass(s):
 
 def geocode(query):
     r = http_session.get(NOMINATIM_URL, params={
-        'q': query, 'format': 'json', 'limit': 5, 'countrycodes': 'us'
+        'q': query, 'format': 'json', 'limit': 10, 'countrycodes': 'us'
     }, timeout=10)
     results = r.json()
     if not results:
         return None
 
     def score(res):
+        # Higher is better. Prominence (Nominatim's importance, roughly
+        # population/notability) is the main signal, so an ambiguous name like
+        # "Denver" resolves to the big well-known one. A small nudge toward
+        # populated places and admin areas keeps a same-name city ahead of a
+        # minor creek/park that happens to share the name.
+        try:
+            imp = float(res.get('importance', 0) or 0)
+        except (TypeError, ValueError):
+            imp = 0.0
         cls = res.get('class', '')
         typ = res.get('type', '')
-        if cls == 'natural' or cls == 'water' or typ in ('lake', 'peak', 'mountain', 'river'):
-            return 0
-        if cls == 'leisure' or 'park' in typ or 'forest' in typ:
-            return 1
-        if cls == 'boundary' and 'national' in res.get('display_name', '').lower():
-            return 2
-        if cls in ('place',) and typ in ('city', 'town', 'village'):
-            return 3
-        return 5
+        bonus = 0.0
+        if cls == 'place' and typ in ('city', 'town', 'village', 'hamlet'):
+            bonus = 0.15
+        elif cls == 'boundary' and typ == 'administrative':
+            bonus = 0.10
+        return imp + bonus
 
-    best = min(results, key=score)
+    best = max(results, key=score)
     bbox = best.get('boundingbox', [])
     return {
         'lat': float(best['lat']),
