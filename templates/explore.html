@@ -481,16 +481,18 @@ function initMap() {
             const res = await fetch(`/api/airquality?lat=${lat}&lon=${lon}`);
             const aq = await res.json();
             if (aq.error) return;
-            const aqi = aq.us_aqi || 0;
-            const label = aq.label || aqLabel(aqi);
-            const color = aqColor(aqi);
+            const hasAqi = aq.us_aqi != null;
+            const aqi = hasAqi ? aq.us_aqi : null;
+            const label = aq.label || (hasAqi ? aqLabel(aqi) : 'No data');
+            const color = hasAqi ? aqColor(aqi) : '#888';
             const parts = [];
             if (aq.pm2_5 != null) parts.push(`PM2.5: ${aq.pm2_5.toFixed(1)} µg/m³`);
             if (aq.pm10 != null) parts.push(`PM10: ${aq.pm10.toFixed(1)} µg/m³`);
             if (aq.ozone != null) parts.push(`O₃: ${aq.ozone.toFixed(1)} µg/m³`);
+            const heading = hasAqi ? `AQI ${aqi} — ${label}` : 'No air quality data here';
             L.popup()
                 .setLatLng(e.latlng)
-                .setContent(`<strong style="font-size:1.1em;color:${color}">AQI ${aqi} — ${label}</strong><br><small style="color:#555">${parts.join('<br>')}</small>`)
+                .setContent(`<strong style="font-size:1.1em;color:${color}">${heading}</strong><br><small style="color:#555">${parts.join('<br>')}</small>`)
                 .openOn(map);
         } catch(err) {}
     });

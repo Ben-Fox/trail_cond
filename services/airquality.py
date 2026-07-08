@@ -156,7 +156,8 @@ def _get_aq_points(cells):
         for (i, j, lat, lon) in cells:
             e = _aq_point_cache.get(_aq_ckey(lat, lon))
             if e is not None and now - e[0] < AQ_POINT_CACHE_TTL:
-                out[(i, j)] = e[1]
+                if e[1] is not None:   # None = cached no-data; skip so it never shows as 0
+                    out[(i, j)] = e[1]
             else:
                 missing.append((i, j, lat, lon))
 
@@ -181,9 +182,17 @@ def _get_aq_points(cells):
             continue
         with _aq_lock:
             for p, d in zip(chunk, data):
-                aqi = float(d.get('current', {}).get('us_aqi', 0) or 0)
+                raw = (d.get('current') or {}).get('us_aqi', None)
+                try:
+                    aqi = float(raw)
+                    if aqi <= 0:   # a real US AQI is always > 0; 0/neg means a bad/empty sample
+                        aqi = None
+                except (TypeError, ValueError):
+                    aqi = None       # null/missing upstream = NO DATA, not zero
+                # Cache None too (as known no-data) so we don't refetch it every render.
                 _aq_point_cache[_aq_ckey(p[2], p[3])] = (now, aqi)
-                out[(p[0], p[1])] = aqi
+                if aqi is not None:
+                    out[(p[0], p[1])] = aqi
 
     with _aq_lock:
         if len(_aq_point_cache) > 20000:
@@ -328,10 +337,11 @@ def api_airquality():
         data = r.json()
         current = data.get('current', {})
 
-        aqi = current.get('us_aqi', 0) or 0
+        raw = current.get('us_aqi')
+        aqi = raw if isinstance(raw, (int, float)) and raw > 0 else None
         result = {
             'us_aqi': aqi,
-            'label': _aqi_label(aqi),
+            'label': _aqi_label(aqi) if aqi is not None else 'No data',
             'pm2_5': current.get('pm2_5'),
             'pm10': current.get('pm10'),
             'ozone': current.get('ozone'),
