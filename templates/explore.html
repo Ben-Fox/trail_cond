@@ -131,15 +131,20 @@ function applyMarkerLabels() {
 // Greedy label decollision: later labels that overlap earlier ones are hidden.
 function dedupeLabels() {
     const els = Array.from(document.querySelectorAll('.leaflet-tooltip.pin-label'));
+    // Batch the DOM writes and reads separately to avoid layout thrashing:
+    // reset all first, then read every rect in one pass, then hide in one pass.
     els.forEach(el => el.classList.remove('label-hidden'));
+    const rects = els.map(el => el.getBoundingClientRect());
     const kept = [];
-    els.forEach(el => {
-        const r = el.getBoundingClientRect();
+    const hide = [];
+    for (let i = 0; i < els.length; i++) {
+        const r = rects[i];
         const hit = kept.some(k => !(r.right < k.left || r.left > k.right ||
                                      r.bottom < k.top || r.top > k.bottom));
-        if (hit) el.classList.add('label-hidden');
+        if (hit) hide.push(els[i]);
         else kept.push(r);
-    });
+    }
+    hide.forEach(el => el.classList.add('label-hidden'));
 }
 
 // Condition pin icons
@@ -390,6 +395,9 @@ function initMap() {
                     minZoom: 5,
                     attribution: 'Conditions: Open-Meteo',
                     errorTileUrl: '', // suppress broken tile images
+                    updateWhenZooming: false, // don't refetch these slow server tiles mid-zoom
+                    updateWhenIdle: true,     // wait until the pan/zoom gesture settles
+                    keepBuffer: 4,            // keep more surrounding tiles to avoid refetches
                 });
             }
             conditionsTileLayer.addTo(map);
@@ -452,6 +460,9 @@ function initMap() {
                     minZoom: 5,
                     attribution: 'AQI: Open-Meteo',
                     errorTileUrl: '',
+                    updateWhenZooming: false, // don't refetch these slow server tiles mid-zoom
+                    updateWhenIdle: true,     // wait until the pan/zoom gesture settles
+                    keepBuffer: 4,            // keep more surrounding tiles to avoid refetches
                 });
             }
             aqTileLayer.addTo(map);

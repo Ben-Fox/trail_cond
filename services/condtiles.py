@@ -226,12 +226,19 @@ def _render_tile_v2(cells, fields, lat_s, lat_n, lon_w, lon_e, size=256):
     km_per_deg_lon = 111.0 * math.cos(math.radians((lat_s + lat_n) / 2))
     dlat = (lat_v - p_lat[None, None, :]) * 111.0
     dlon = (lon_v - p_lon[None, None, :]) * km_per_deg_lon
-    dsq = dlat * dlat + dlon * dlon + 1e-6
-    w = 1.0 / (dsq ** 1.25)                       # IDW power 2.5 on distance
+    dsq = dlat * dlat + dlon * dlon + 1e-6        # (H, W, N)
+
+    # k-nearest IDW: interpolate each pixel from only its k nearest nodes instead of
+    # every node in the tile. Cuts the per-field reduction from N (~hundreds at low
+    # zoom) to k, so cold tiles render much faster, and keeps the value zoom-stable.
+    kk = min(12, dsq.shape[2])
+    idx = np.argpartition(dsq, kk - 1, axis=2)[..., :kk]
+    d2k = np.take_along_axis(dsq, idx, axis=2)
+    w = 1.0 / (d2k ** 1.25)                        # IDW power 2.5 on distance
     wsum = w.sum(axis=2)
-    moist = (w * f_moist).sum(axis=2) / wsum
-    snow = (w * f_snow).sum(axis=2) / wsum
-    freeze = (w * f_freeze).sum(axis=2) / wsum
+    moist = (w * f_moist[idx]).sum(axis=2) / wsum
+    snow = (w * f_snow[idx]).sum(axis=2) / wsum
+    freeze = (w * f_freeze[idx]).sum(axis=2) / wsum
 
     # moisture ramp: dry(<=2) -> wet(5) -> mud(12+)
     t_wet = np.clip((moist - 2.0) / 3.0, 0, 1)[..., None]
