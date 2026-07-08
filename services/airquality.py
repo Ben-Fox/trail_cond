@@ -312,6 +312,23 @@ def airquality_tile(z, x, y):
             ev.set()
 
 
+def _knn_point_aqi(plat, plon, cells, values, k=12):
+    """k-nearest IDW of US AQI at a single point from the reporting lattice nodes.
+    Returns None only if no surrounding node reports a value."""
+    pts = [(la, lo, values[(i, j)]) for (i, j, la, lo) in cells if (i, j) in values]
+    if not pts:
+        return None
+    lats = np.array([p[0] for p in pts], dtype=np.float64)
+    lons = np.array([p[1] for p in pts], dtype=np.float64)
+    aqs = np.array([p[2] for p in pts], dtype=np.float64)
+    km_lon = 111.0 * math.cos(math.radians(plat))
+    d2 = ((plat - lats) * 111.0) ** 2 + ((plon - lons) * km_lon) ** 2 + 1e-6
+    kk = min(k, len(d2))
+    idx = np.argpartition(d2, kk - 1)[:kk]
+    w = 1.0 / (d2[idx] ** 1.25)
+    return float((w * aqs[idx]).sum() / w.sum())
+
+
 @airquality_bp.route('/api/airquality')
 def api_airquality():
     """Get detailed air quality for a specific point."""
@@ -339,9 +356,23 @@ def api_airquality():
 
         raw = current.get('us_aqi')
         aqi = raw if isinstance(raw, (int, float)) and raw > 0 else None
+        interpolated = False
+        if aqi is None:
+            # This exact model point has no reading right now. Interpolate from the
+            # surrounding reporting nodes (same method as the map overlay) so we show
+            # the real neighborhood value instead of "no data".
+            latf, lonf = float(lat), float(lon)
+            m = 0.75  # ~0.75 deg neighborhood, enough nodes for a k-nearest blend
+            cells = _aq_lattice_points(latf - m, latf + m, lonf - m, lonf + m, _AQ_DATA_SPACING)
+            vals = _get_aq_points(cells)
+            v = _knn_point_aqi(latf, lonf, cells, vals)
+            if v is not None:
+                aqi = round(v)
+                interpolated = True
         result = {
             'us_aqi': aqi,
             'label': _aqi_label(aqi) if aqi is not None else 'No data',
+            'interpolated': interpolated,
             'pm2_5': current.get('pm2_5'),
             'pm10': current.get('pm10'),
             'ozone': current.get('ozone'),
@@ -349,7 +380,9 @@ def api_airquality():
             'so2': current.get('sulphur_dioxide'),
             'co': current.get('carbon_monoxide'),
         }
-        cache_response(cache_key, result, ttl=900)
+        # Only cache real results; don't lock in a "no data" for 15 min.
+        if aqi is not None:
+            cache_response(cache_key, result, ttl=900)
         return jsonify(result)
     except Exception:
         return jsonify({'error': 'Air quality data temporarily unavailable'}), 500
