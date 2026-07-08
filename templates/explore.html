@@ -640,11 +640,11 @@ async function doSearch() {
             // found nothing; the auto area-search on arrival may still turn up trails.
             if (geoBbox && !userMovedSinceSearch) {
                 programmaticMove = true;
-                pendingAreaSearch = true;
+                armAutoSearch();
                 map.flyToBounds([[geoBbox[0], geoBbox[2]], [geoBbox[1], geoBbox[3]]], {padding: [50,50], maxZoom: 14, duration: 1.2});
             } else if (center && !userMovedSinceSearch) {
                 programmaticMove = true;
-                pendingAreaSearch = true;
+                armAutoSearch();
                 map.flyTo([center.lat, center.lon], 12, {duration: 1.2});
             }
             document.getElementById('resultsList').innerHTML = '<p class="muted">No trails found</p>';
@@ -657,11 +657,11 @@ async function doSearch() {
         // auto-search the viewport so trails for the new area load on their own.
         if (geoBbox && !userMovedSinceSearch) {
             programmaticMove = true;
-            pendingAreaSearch = true;
+            armAutoSearch();
             map.flyToBounds([[geoBbox[0], geoBbox[2]], [geoBbox[1], geoBbox[3]]], {padding: [50,50], maxZoom: 14, duration: 1.2});
         } else if (center && !userMovedSinceSearch) {
             programmaticMove = true;
-            pendingAreaSearch = true;
+            armAutoSearch();
             map.flyTo([center.lat, center.lon], 12, {duration: 1.2});
         }
 
@@ -890,6 +890,21 @@ if (savedMap) {
 const searchMapBtn = document.getElementById('searchMapBtn');
 // Set true when a place search flies the map here so trails auto-load on arrival.
 let pendingAreaSearch = false;
+// Arm the auto area-search. Normally the programmatic fly's moveend consumes the
+// flag and runs searchThisArea(). But if the map is already at the target the fly
+// is a no-op and emits NO moveend, so the flag would stick and trails never load.
+// This fallback timer fires the search directly in that case (the flag guard makes
+// sure it never double-runs with the moveend path).
+function armAutoSearch() {
+    pendingAreaSearch = true;
+    setTimeout(() => {
+        if (pendingAreaSearch) {
+            pendingAreaSearch = false;
+            programmaticMove = false;
+            searchThisArea();
+        }
+    }, 1600);
+}
 map.on('moveend', () => {
     if (programmaticMove) {
         programmaticMove = false;
