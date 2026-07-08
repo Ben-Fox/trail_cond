@@ -94,27 +94,36 @@ def _tile_to_bbox(z, x, y):
     return lat_s, lat_n, lon_w, lon_e
 
 
+# The upstream air-quality data (Open-Meteo / CAMS) is only ~0.25 deg resolution,
+# so sampling finer than that adds NO real information, only interpolation artifacts
+# and an extra zoom band transition. We cap the finest lattice at the data's own
+# resolution. Above z7 the node set is therefore FROZEN (same 0.25 deg grid at every
+# zoom), so the field cannot shift as you zoom in past that point.
+_AQ_DATA_SPACING = 0.25
+
+# Interpolation neighborhood in degrees. Every tile fetches all nodes within this
+# distance of its edges, so the set of nodes feeding any given point is the same at
+# every zoom (at high zoom a tiny tile would otherwise see only 2-3 nodes and drift).
+_AQ_MARGIN_DEG = 1.5
+
+
 def _aq_lattice_spacing(z):
-    """Nested spacing schedule: each level is half the previous (0.5 -> 0.25 ->
-    0.125 deg) and the lattice is grid-aligned, so a coarser grid's nodes are a
-    strict SUBSET of the next finer grid's. Zooming in therefore only ADDS sample
-    nodes between the existing ones; the interpolated field refines instead of
-    being recomputed from a different set of points. This removes the old
-    z6/z7 'repaint' where the whole surface jumped because the two grids did not
-    share node positions."""
-    if z <= 6:
-        return 0.5
-    if z <= 8:
-        return 0.25
-    return 0.125
+    """Two grid-aligned, NESTED levels only: 0.5 deg when far out (z<=6) for fetch
+    cost, then 0.25 deg (the data's true resolution) for z>=7. Grid alignment plus a
+    2x ratio means the coarse grid's nodes are a strict SUBSET of the fine grid's, so
+    the single z6->z7 step only ADDS nodes (refines) rather than repainting, and from
+    z7 up the node set never changes at all."""
+    return 0.5 if z <= 6 else _AQ_DATA_SPACING
 
 
-def _aq_lattice_points(lat_s, lat_n, lon_w, lon_e, spacing, margin=2):
+def _aq_lattice_points(lat_s, lat_n, lon_w, lon_e, spacing):
     """Grid-aligned lattice (nodes at i*spacing, not offset by half a cell) plus a
-    margin ring for seamless tile edges. Grid alignment + power-of-two spacings is
-    what makes the levels nest: a node at a given lat/lon exists at every zoom that
-    reaches it, so its value (see coordinate-keyed cache in _get_aq_points) is
-    identical across zooms and the field stays stable as you zoom."""
+    fixed-DEGREE neighborhood ring (_AQ_MARGIN_DEG). Grid alignment + power-of-two
+    spacings make the levels nest; the fixed-degree ring (rather than a fixed cell
+    count) keeps the surrounding node set constant in geographic terms across zooms,
+    so a point's interpolated value does not drift when a zoomed-in tile would
+    otherwise capture too few neighbors."""
+    margin = max(2, math.ceil(_AQ_MARGIN_DEG / spacing))
     i0 = math.floor(lat_s / spacing) - margin
     i1 = math.floor(lat_n / spacing) + margin
     j0 = math.floor(lon_w / spacing) - margin
@@ -192,8 +201,13 @@ _AQI_B = np.array([c[2] for _, c in AQI_COLORS], dtype=np.float32)
 _AQI_A = np.array([c[3] for _, c in AQI_COLORS], dtype=np.float32)
 
 
-def _render_aq_tile_v2(cells, values, lat_s, lat_n, lon_w, lon_e, size=256):
-    """numpy IDW over the continuous AQI field + EPA ramp."""
+def _render_aq_tile_v2(cells, values, lat_s, lat_n, lon_w, lon_e, size=256, k=12):
+    """numpy k-nearest IDW over the AQI field + EPA ramp.
+
+    Each pixel is interpolated from ONLY its k nearest data nodes, not every node in
+    the tile. Because the nodes sit on a fixed world grid, a given point's k nearest
+    neighbors are the same set at any zoom, so its color does not drift as you zoom in
+    (all-neighbor IDW let the shrinking tile's far nodes nudge the value each step)."""
     from PIL import Image, ImageFilter
 
     pts = [(lat, lon, values[(i, j)]) for (i, j, lat, lon) in cells if (i, j) in values]
@@ -209,8 +223,14 @@ def _render_aq_tile_v2(cells, values, lat_s, lat_n, lon_w, lon_e, size=256):
     km_lon = 111.0 * math.cos(math.radians((lat_s + lat_n) / 2))
     dlat = (lat_v - p_lat[None, None, :]) * 111.0
     dlon = (lon_v - p_lon[None, None, :]) * km_lon
-    w = 1.0 / ((dlat * dlat + dlon * dlon + 1e-6) ** 1.25)
-    aqi = (w * p_aqi).sum(axis=2) / w.sum(axis=2)
+    d2 = dlat * dlat + dlon * dlon + 1e-6  # (H, W, N)
+
+    kk = min(k, d2.shape[2])
+    idx = np.argpartition(d2, kk - 1, axis=2)[..., :kk]  # k nearest node indices per pixel
+    d2k = np.take_along_axis(d2, idx, axis=2)
+    aqik = p_aqi[idx]
+    w = 1.0 / (d2k ** 1.25)
+    aqi = (w * aqik).sum(axis=2) / w.sum(axis=2)
 
     out = np.empty((size, size, 4), dtype=np.uint8)
     out[..., 0] = np.interp(aqi, _AQI_X, _AQI_R).astype(np.uint8)
