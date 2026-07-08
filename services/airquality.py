@@ -95,9 +95,47 @@ def _tile_to_bbox(z, x, y):
 
 
 def _aq_lattice_spacing(z):
-    """One transition only (z6->7): CAMS air-quality data is ~0.25 deg, so
-    0.125 deg sampling is already finer than the data everywhere."""
-    return 0.5 if z <= 6 else 0.125
+    """Nested spacing schedule: each level is half the previous (0.5 -> 0.25 ->
+    0.125 deg) and the lattice is grid-aligned, so a coarser grid's nodes are a
+    strict SUBSET of the next finer grid's. Zooming in therefore only ADDS sample
+    nodes between the existing ones; the interpolated field refines instead of
+    being recomputed from a different set of points. This removes the old
+    z6/z7 'repaint' where the whole surface jumped because the two grids did not
+    share node positions."""
+    if z <= 6:
+        return 0.5
+    if z <= 8:
+        return 0.25
+    return 0.125
+
+
+def _aq_lattice_points(lat_s, lat_n, lon_w, lon_e, spacing, margin=2):
+    """Grid-aligned lattice (nodes at i*spacing, not offset by half a cell) plus a
+    margin ring for seamless tile edges. Grid alignment + power-of-two spacings is
+    what makes the levels nest: a node at a given lat/lon exists at every zoom that
+    reaches it, so its value (see coordinate-keyed cache in _get_aq_points) is
+    identical across zooms and the field stays stable as you zoom."""
+    i0 = math.floor(lat_s / spacing) - margin
+    i1 = math.floor(lat_n / spacing) + margin
+    j0 = math.floor(lon_w / spacing) - margin
+    j1 = math.floor(lon_e / spacing) + margin
+    pts = []
+    for i in range(i0, i1 + 1):
+        for j in range(j0, j1 + 1):
+            lat = i * spacing
+            lon = j * spacing
+            if -85 < lat < 85:
+                pts.append((i, j, lat, lon))
+    return pts
+
+
+def _aq_ckey(lat, lon):
+    """Cache key = physical coordinates (rounded), NOT lattice index. Two zoom
+    bands can share a node (nested grids), and keying on coordinates makes them
+    reuse one cached value, so a shared node reads identically at any zoom. It
+    also removes the old bug where the same (i,j) index meant different real
+    locations at different spacings and served wrong-location AQI after a zoom."""
+    return (round(lat, 4), round(lon, 4))
 
 
 def _get_aq_points(cells):
@@ -107,7 +145,7 @@ def _get_aq_points(cells):
     missing = []
     with _aq_lock:
         for (i, j, lat, lon) in cells:
-            e = _aq_point_cache.get((i, j))
+            e = _aq_point_cache.get(_aq_ckey(lat, lon))
             if e is not None and now - e[0] < AQ_POINT_CACHE_TTL:
                 out[(i, j)] = e[1]
             else:
@@ -115,22 +153,28 @@ def _get_aq_points(cells):
 
     for k0 in range(0, len(missing), 100):
         chunk = missing[k0:k0 + 100]
-        try:
-            r = http_session.get('https://air-quality-api.open-meteo.com/v1/air-quality', params={
-                'latitude': ','.join(f'{p[2]:.4f}' for p in chunk),
-                'longitude': ','.join(f'{p[3]:.4f}' for p in chunk),
-                'current': 'us_aqi',
-            }, timeout=12)
-            data = r.json()
-            if not isinstance(data, list):
-                data = [data]
-            with _aq_lock:
-                for p, d in zip(chunk, data):
-                    aqi = float(d.get('current', {}).get('us_aqi', 0) or 0)
-                    _aq_point_cache[(p[0], p[1])] = (now, aqi)
-                    out[(p[0], p[1])] = aqi
-        except Exception as e:
-            logger.warning(f'AQ point fetch failed ({len(chunk)} pts): {e}')
+        data = None
+        for attempt in range(2):  # one retry so a transient hiccup doesn't leave a gap
+            try:
+                r = http_session.get('https://air-quality-api.open-meteo.com/v1/air-quality', params={
+                    'latitude': ','.join(f'{p[2]:.4f}' for p in chunk),
+                    'longitude': ','.join(f'{p[3]:.4f}' for p in chunk),
+                    'current': 'us_aqi',
+                }, timeout=12)
+                data = r.json()
+                if not isinstance(data, list):
+                    data = [data]
+                break
+            except Exception as e:
+                if attempt == 1:
+                    logger.warning(f'AQ point fetch failed ({len(chunk)} pts): {e}')
+        if data is None:
+            continue
+        with _aq_lock:
+            for p, d in zip(chunk, data):
+                aqi = float(d.get('current', {}).get('us_aqi', 0) or 0)
+                _aq_point_cache[_aq_ckey(p[2], p[3])] = (now, aqi)
+                out[(p[0], p[1])] = aqi
 
     with _aq_lock:
         if len(_aq_point_cache) > 20000:
@@ -183,9 +227,8 @@ _aq_inflight = {}
 
 @airquality_bp.route('/api/tiles/airquality/<int:z>/<int:x>/<int:y>.png')
 def airquality_tile(z, x, y):
-    """AQ overlay tile from the shared lattice (seamless + zoom-stable)."""
+    """AQ overlay tile from a nested, grid-aligned lattice (seamless + zoom-stable)."""
     from PIL import Image
-    from services.condtiles import _lattice_points
 
     def _blank(max_age=3600):
         img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
@@ -214,7 +257,7 @@ def airquality_tile(z, x, y):
 
     try:
         lat_s, lat_n, lon_w, lon_e = _tile_to_bbox(z, x, y)
-        cells = _lattice_points(lat_s, lat_n, lon_w, lon_e, _aq_lattice_spacing(z))
+        cells = _aq_lattice_points(lat_s, lat_n, lon_w, lon_e, _aq_lattice_spacing(z))
         values = _get_aq_points(cells)
         if not values:
             return _blank(300)
