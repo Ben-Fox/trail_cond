@@ -33,7 +33,7 @@
             <span style="color:#888;">to</span>
             <input id="rangeMax" type="number" min="0" step="0.5" placeholder="Max"
                    style="width:4.5rem;padding:6px 8px;border-radius:8px;border:1px solid #ccc;">
-            <button id="suggestRoutesBtn" class="btn btn-secondary">Suggest routes</button>
+            <button id="suggestRoutesBtn" class="btn btn-primary" style="background:#2d6a4f;border-color:#2d6a4f;color:#fff;">Suggest routes</button>
             <button id="clearRouteBtn" class="btn btn-secondary" style="display:none;">Clear route</button>
         </div>
         <div id="routeSuggestPanel"></div>
@@ -1114,6 +1114,21 @@ async function suggestRoutes() {
 }
 document.getElementById('suggestRoutesBtn').addEventListener('click', suggestRoutes);
 document.getElementById('clearRouteBtn').addEventListener('click', clearDiscoveredRoute);
+
+// Live length filter: when the user types a length range, auto-run the route
+// suggestions (debounced) so the map updates on its own without pressing the button.
+let _rangeTimer = null;
+function onRangeChange() {
+    clearTimeout(_rangeTimer);
+    _rangeTimer = setTimeout(() => {
+        const mn = parseFloat(document.getElementById('rangeMin').value);
+        const mx = parseFloat(document.getElementById('rangeMax').value);
+        const hasFilter = !isNaN(mx) && mx > 0 || (!isNaN(mn) && mn > 0);
+        if (hasFilter && (isNaN(mn) || isNaN(mx) || mx > mn)) suggestRoutes();
+    }, 900);
+}
+document.getElementById('rangeMin').addEventListener('input', onRangeChange);
+document.getElementById('rangeMax').addEventListener('input', onRangeChange);
 
 document.getElementById('nearMeBtn').addEventListener('click', () => {
     if (!navigator.geolocation) return alert('Geolocation not supported');
