@@ -895,3 +895,84 @@ def api_route_discover():
     except Exception as ex:
         logger.warning(f'route discover failed: {ex}')
         return jsonify({'error': 'Trail network lookup timed out — try again in a minute'}), 503
+
+
+@trail_bp.route('/api/trails/lengths', methods=['POST'])
+def api_trails_lengths():
+    """Batch-measure trail lengths (miles) so the map can filter pins by length.
+    Search results carry no length; this fetches geometry for a whole set of
+    trails in one Overpass query and sums each one's distance."""
+    d = request.get_json(silent=True) or {}
+    trails = d.get('trails') or []
+    if not trails:
+        return jsonify({'lengths': {}})
+
+    way_ids, rel_ids = set(), set()
+    for t in trails:
+        try:
+            oid = int(t.get('osm_id'))
+        except (TypeError, ValueError):
+            continue
+        if t.get('osm_type') == 'relation':
+            rel_ids.add(oid)
+        else:
+            way_ids.add(oid)
+            for w in (t.get('way_ids') or []):
+                try:
+                    way_ids.add(int(w))
+                except (TypeError, ValueError):
+                    pass
+    if not way_ids and not rel_ids:
+        return jsonify({'lengths': {}})
+
+    cache_key = ("lengths:" + ",".join(map(str, sorted(way_ids)))
+                 + ":" + ",".join(map(str, sorted(rel_ids))))
+    cached = cached_response(cache_key, ttl=1800)
+    if cached:
+        return jsonify(cached)
+
+    q = '[out:json][timeout:90];'
+    if rel_ids:
+        q += f'relation(id:{",".join(map(str, sorted(rel_ids)))});out body;'
+    if way_ids:
+        q += f'way(id:{",".join(map(str, sorted(way_ids)))});out geom;'
+    if rel_ids:
+        q += f'relation(id:{",".join(map(str, sorted(rel_ids)))});way(r);out geom;'
+
+    try:
+        data = overpass_query(q, read_timeout=95)
+    except Exception as ex:
+        logger.warning(f'trail lengths query failed: {ex}')
+        return jsonify({'lengths': {}, 'error': 'measure timed out'})
+
+    way_geom, rel_members = {}, {}
+    for el in data.get('elements', []):
+        if el.get('type') == 'way' and 'geometry' in el:
+            way_geom[el['id']] = [{'lat': p['lat'], 'lon': p['lon']} for p in el['geometry']]
+        elif el.get('type') == 'relation':
+            rel_members[el['id']] = [m['ref'] for m in el.get('members', []) if m.get('type') == 'way']
+
+    lengths = {}
+    for t in trails:
+        try:
+            oid = int(t.get('osm_id'))
+        except (TypeError, ValueError):
+            continue
+        if t.get('osm_type') == 'relation':
+            wids = rel_members.get(oid, [])
+        else:
+            wids = [oid] + [int(w) for w in (t.get('way_ids') or []) if str(w).isdigit()]
+        km, seen = 0.0, set()
+        for w in wids:
+            if w in seen:
+                continue
+            seen.add(w)
+            g = way_geom.get(w)
+            if g and len(g) > 1:
+                km += _chain_length_km(g)
+        if km > 0:
+            lengths[f"{t.get('osm_type')}/{oid}"] = round(km * 0.621371, 2)
+
+    result = {'lengths': lengths}
+    cache_response(cache_key, result, ttl=1800)
+    return jsonify(result)

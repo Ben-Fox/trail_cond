@@ -906,7 +906,12 @@ async function renderResults(trails, skipFitBounds) {
     markerMap.forEach(m => allMarkers.push(m));
     markerCluster.addLayers(allMarkers);
     applyMarkerLabels();
-    
+
+    // If a length range is set, re-apply the length filter to the new results.
+    const _lmn = parseFloat(document.getElementById('rangeMin').value);
+    const _lmx = parseFloat(document.getElementById('rangeMax').value);
+    if ((!isNaN(_lmn) && _lmn > 0) || (!isNaN(_lmx) && _lmx > 0)) applyLengthFilter();
+
     // Route loading disabled to avoid Overpass rate limits
     // Routes are visible on the Waymarked Trails overlay instead
 }
@@ -1120,15 +1125,49 @@ document.getElementById('clearRouteBtn').addEventListener('click', clearDiscover
 let _rangeTimer = null;
 function onRangeChange() {
     clearTimeout(_rangeTimer);
-    _rangeTimer = setTimeout(() => {
-        const mn = parseFloat(document.getElementById('rangeMin').value);
-        const mx = parseFloat(document.getElementById('rangeMax').value);
-        const hasFilter = !isNaN(mx) && mx > 0 || (!isNaN(mn) && mn > 0);
-        if (hasFilter && (isNaN(mn) || isNaN(mx) || mx > mn)) suggestRoutes();
-    }, 900);
+    _rangeTimer = setTimeout(applyLengthFilter, 700);
 }
 document.getElementById('rangeMin').addEventListener('input', onRangeChange);
 document.getElementById('rangeMax').addEventListener('input', onRangeChange);
+
+// Filter the trail pins/cards by MEASURED length. Search results carry no length,
+// so measure the current set in one batch and hide any trail outside the range
+// (and any too small to measure, which are usually connector stubs, not real trails).
+async function applyLengthFilter() {
+    const mn = parseFloat(document.getElementById('rangeMin').value);
+    const mx = parseFloat(document.getElementById('rangeMax').value);
+    const hasMin = !isNaN(mn) && mn > 0, hasMax = !isNaN(mx) && mx > 0;
+    if (!hasMin && !hasMax) { showAllTrails(); return; }
+    if (!currentTrails.length) return;
+    let lengths = {};
+    try {
+        const res = await fetch('/api/trails/lengths', {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({trails: currentTrails.map(t => ({osm_type: t.osm_type, osm_id: t.osm_id, way_ids: t.way_ids || []}))})});
+        lengths = (await res.json()).lengths || {};
+    } catch (e) { return; }
+    const inRange = mi => (!hasMin || mi >= mn) && (!hasMax || mi <= mx);
+    const keep = new Set();
+    currentTrails.forEach(t => {
+        const mi = lengths[`${t.osm_type}/${t.osm_id}`];
+        if (mi != null && inRange(mi)) keep.add(`${t.osm_type}:${t.osm_id}`);
+    });
+    document.querySelectorAll('#resultsList .trail-card').forEach(card => {
+        card.style.display = keep.has(card.dataset.trailId) ? '' : 'none';
+    });
+    const keepMarkers = [];
+    markerMap.forEach((m, k) => { if (keep.has(k)) keepMarkers.push(m); });
+    markerCluster.clearLayers();
+    markerCluster.addLayers(keepMarkers);
+    const rc = document.getElementById('resultCount');
+    if (rc) rc.textContent = `${keepMarkers.length} of ${currentTrails.length} trails in range`;
+}
+function showAllTrails() {
+    document.querySelectorAll('#resultsList .trail-card').forEach(c => c.style.display = '');
+    const all = [];
+    markerMap.forEach(m => all.push(m));
+    markerCluster.clearLayers();
+    markerCluster.addLayers(all);
+}
 
 document.getElementById('nearMeBtn').addEventListener('click', () => {
     if (!navigator.geolocation) return alert('Geolocation not supported');
