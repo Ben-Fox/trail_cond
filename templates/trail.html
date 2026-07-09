@@ -299,24 +299,8 @@ async function loadTrail() {
         </div>`;
     }
     
-    // Route Builder
-    if (trail.geometry && trail.geometry.length > 2) {
-        html += `<div class="section-block" id="routeBuilderSection">
-            <h2>Route Builder</h2>
-            <p class="muted">Combine connecting trails into a loop or out-and-back near your target distance.</p>
-            <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin:0.6rem 0;">
-                <select id="rbMode" style="padding:6px 10px;border-radius:8px;border:1px solid #ccc;">
-                    <option value="loop">Loop</option>
-                    <option value="outback">Out & Back</option>
-                </select>
-                <input id="rbMiles" type="number" min="1" max="40" step="0.5" value="5"
-                       style="width:5.5rem;padding:6px 10px;border-radius:8px;border:1px solid #ccc;"> miles
-                <button id="rbGo" class="btn btn-primary">Suggest Route</button>
-                <button id="rbClear" class="btn btn-secondary" style="display:none;">Clear</button>
-            </div>
-            <div id="rbResult" class="muted"></div>
-        </div>`;
-    }
+    // Route Builder moved to the Find Trails map (area-wide route suggestions by
+    // length range, with out-and-back distances doubled). See explore.html.
 
     // OSM attribution
     const usgsAttr = trail.usgs_enriched ? ' &amp; <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank">USGS National Map</a>' : '';

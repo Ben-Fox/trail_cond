@@ -26,6 +26,30 @@
             <button class="filter-chip" data-filter="paved">Paved / Path</button>
             <button class="filter-chip" data-filter="horse">Horseback</button>
         </div>
+        <div class="trail-filters" style="margin-top:0.4rem;flex-wrap:wrap;">
+            <span class="filter-label">Route length (mi):</span>
+            <input id="rangeMin" type="number" min="0" step="0.5" placeholder="Min"
+                   style="width:4.5rem;padding:6px 8px;border-radius:8px;border:1px solid #ccc;">
+            <span style="color:#888;">to</span>
+            <input id="rangeMax" type="number" min="0" step="0.5" placeholder="Max"
+                   style="width:4.5rem;padding:6px 8px;border-radius:8px;border:1px solid #ccc;">
+            <button id="suggestRoutesBtn" class="btn btn-secondary">Suggest routes</button>
+            <button id="clearRouteBtn" class="btn btn-secondary" style="display:none;">Clear route</button>
+        </div>
+        <div id="routeSuggestPanel"></div>
+        <style>
+            #routeSuggestPanel { margin-top:0.5rem; max-height:190px; overflow-y:auto; }
+            .route-sugg-head { font-size:0.8rem; color:#666; margin:0.3rem 0; }
+            .route-sugg-empty { font-size:0.85rem; color:#666; padding:0.4rem 0; }
+            .route-sugg-item { display:block; width:100%; text-align:left; background:#fff;
+                border:1px solid #ddd; border-radius:8px; padding:8px 10px; margin-bottom:6px; cursor:pointer; }
+            .route-sugg-item:hover { border-color:#4a90d9; }
+            .route-sugg-item.active { border-color:#1d5fbf; background:#eef4fc; }
+            .rs-dist { font-weight:700; }
+            .rs-type { color:#4a90d9; font-size:0.85rem; }
+            .rs-ow { color:#888; font-size:0.8rem; }
+            .rs-names { color:#555; font-size:0.8rem; margin-top:2px; }
+        </style>
     </div>
 </section>
 <section class="explore-body">
@@ -1008,6 +1032,69 @@ async function searchThisArea() {
 searchMapBtn.addEventListener('click', searchThisArea);
 
 document.getElementById('searchBtn').addEventListener('click', doSearch);
+
+// --- Route Builder: suggest loops / out-and-backs in the current view by length range ---
+let DISCOVERED = [];
+let routeLayer = null;
+function clearDiscoveredRoute() {
+    if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+    document.getElementById('clearRouteBtn').style.display = 'none';
+    document.querySelectorAll('.route-sugg-item').forEach(el => el.classList.remove('active'));
+}
+function showDiscoveredRoute(idx) {
+    const r = DISCOVERED[idx];
+    if (!r || !r.geometry || !r.geometry.length) return;
+    if (routeLayer) map.removeLayer(routeLayer);
+    const latlngs = r.geometry.map(p => [p.lat, p.lon]);
+    routeLayer = L.layerGroup([
+        L.polyline(latlngs, {color: '#1d5fbf', weight: 7, opacity: 0.5}),
+        L.polyline(latlngs, {color: '#4a90d9', weight: 3, opacity: 0.95, dashArray: '8 6'}),
+    ]).addTo(map);
+    programmaticMove = true;
+    map.fitBounds(L.polyline(latlngs).getBounds(), {padding: [40, 40]});
+    document.getElementById('clearRouteBtn').style.display = '';
+    document.querySelectorAll('.route-sugg-item').forEach((el, i) => el.classList.toggle('active', i === idx));
+}
+function renderRouteSuggestions(routes) {
+    const panel = document.getElementById('routeSuggestPanel');
+    DISCOVERED = routes || [];
+    if (!DISCOVERED.length) {
+        panel.innerHTML = '<div class="route-sugg-empty">No route link-ups found in this view for that length. Try a wider range or pan to a trail area.</div>';
+        return;
+    }
+    panel.innerHTML = '<div class="route-sugg-head">' + DISCOVERED.length + ' suggested routes (tap one to see it on the map)</div>' +
+        DISCOVERED.map((r, i) => {
+            const type = r.mode === 'loop' ? 'loop' : 'out &amp; back';
+            const ow = (r.mode === 'outback' && r.oneway_mi != null) ? ` <span class="rs-ow">(${r.oneway_mi} mi each way)</span>` : '';
+            const names = (r.names || []).slice(0, 3).map(esc).join(' → ') || 'Unnamed trails';
+            return `<button class="route-sugg-item" onclick="showDiscoveredRoute(${i})"><span class="rs-dist">${r.total_mi} mi</span> <span class="rs-type">${type}</span>${ow}<div class="rs-names">${names}</div></button>`;
+        }).join('');
+}
+async function suggestRoutes() {
+    const panel = document.getElementById('routeSuggestPanel');
+    const b = map.getBounds();
+    const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(x => x.toFixed(5)).join(',');
+    let mn = parseFloat(document.getElementById('rangeMin').value);
+    let mx = parseFloat(document.getElementById('rangeMax').value);
+    if (isNaN(mn)) mn = 0;
+    if (isNaN(mx)) mx = 15;  // blank max = a wide default range
+    if (mx <= mn) { panel.innerHTML = '<div class="route-sugg-empty">Max length must be greater than min.</div>'; return; }
+    const btn = document.getElementById('suggestRoutesBtn');
+    btn.disabled = true;
+    panel.innerHTML = '<div class="route-sugg-empty">Finding route link-ups in this area (can take ~15s the first time)...</div>';
+    try {
+        const res = await fetch(`/api/route/discover?bbox=${encodeURIComponent(bbox)}&min_mi=${mn}&max_mi=${mx}`);
+        const d = await res.json();
+        if (d.error) { panel.innerHTML = `<div class="route-sugg-empty">${esc(d.error)}</div>`; return; }
+        renderRouteSuggestions(d.routes);
+    } catch (e) {
+        panel.innerHTML = '<div class="route-sugg-empty">Route search failed. Try again.</div>';
+    } finally {
+        btn.disabled = false;
+    }
+}
+document.getElementById('suggestRoutesBtn').addEventListener('click', suggestRoutes);
+document.getElementById('clearRouteBtn').addEventListener('click', clearDiscoveredRoute);
 
 document.getElementById('nearMeBtn').addEventListener('click', () => {
     if (!navigator.geolocation) return alert('Geolocation not supported');

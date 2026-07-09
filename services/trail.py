@@ -621,6 +621,10 @@ def _search_route(edges, adj, start, target_km, mode, max_expansions=200000):
                     if score < best['score']:
                         best.update(score=score, path=path[:p], cycle=path[p:] + [ei], km=total)
                 continue
+            if mode == 'outback' and other in node_pos:
+                # keep out-and-back a node-simple path (no looping back on itself);
+                # this also keeps node_pos balanced so its set/del never corrupts.
+                continue
             if nk > limit and mode == 'outback':
                 continue
             if mode == 'loop' and nk > target_km * 1.1:
@@ -768,4 +772,126 @@ def api_route_suggest():
         return jsonify(result)
     except Exception as e:
         logger.warning(f'route suggest failed: {e}')
+        return jsonify({'error': 'Trail network lookup timed out — try again in a minute'}), 503
+
+
+@trail_bp.route('/api/route/discover')
+def api_route_discover():
+    """Suggest loop / out-and-back route link-ups in the map bbox whose TRUE distance
+    lands within a length range. Out-and-backs count double (round trip to the car)."""
+    try:
+        s, w, n, e = [float(x) for x in request.args.get('bbox', '').split(',')]
+    except (ValueError, TypeError):
+        return jsonify({'error': 'bbox=s,w,n,e required'}), 400
+
+    def _f(name, dflt):
+        try:
+            return float(request.args.get(name, ''))
+        except (TypeError, ValueError):
+            return dflt
+
+    min_mi = max(0.0, _f('min_mi', 0.0))
+    max_mi = _f('max_mi', 50.0)
+    if max_mi <= 0 or min_mi >= max_mi:
+        return jsonify({'error': 'invalid length range'}), 400
+    if (n - s) > 0.4 or (e - w) > 0.4:
+        return jsonify({'error': 'Zoom in a little so I can suggest routes for a smaller area'}), 400
+    min_km, max_km = min_mi / 0.621371, max_mi / 0.621371
+    mid_km = (min_km + max_km) / 2
+    mid_mi = (min_mi + max_mi) / 2
+
+    cache_key = f"discover:{s:.3f},{w:.3f},{n:.3f},{e:.3f}:{min_mi:.1f}:{max_mi:.1f}"
+    cached = cached_response(cache_key, ttl=1800)
+    if cached:
+        return jsonify(cached)
+
+    try:
+        # Higher way cap than the single-anchor builder: discovery needs a fuller
+        # network across the whole viewport or connectivity breaks and no long
+        # routes form.
+        q = (f'[out:json][timeout:45];'
+             f'way["highway"~"^(path|footway|track|cycleway|bridleway)$"]'
+             f'({s},{w},{n},{e});out geom 2500;')
+        net = overpass_query(q, read_timeout=55)
+        edges_pts = [
+            dict(name=(el.get('tags', {}) or {}).get('name', ''),
+                 pts=[{'lat': p['lat'], 'lon': p['lon']} for p in el['geometry']])
+            for el in net.get('elements', [])
+            if el.get('type') == 'way' and 'geometry' in el
+        ]
+        if not edges_pts:
+            return jsonify({'routes': [], 'count': 0})
+
+        edges, adj = _build_route_graph(edges_pts)
+        if not adj:
+            return jsonify({'routes': [], 'count': 0})
+
+        # Candidate start nodes: dead-ends (natural trailheads for out-and-backs) first,
+        # then junctions (loop starts). Deterministic, bounded so the search stays fast.
+        deg = {node: len(nbrs) for node, nbrs in adj.items()}
+        deadends = sorted([nd for nd, d in deg.items() if d == 1])[:16]
+        junctions = sorted([nd for nd, d in deg.items() if d >= 3])[:10]
+        starts = list(dict.fromkeys(deadends + junctions))[:22]
+
+        # Target distances spread across the range so suggestions vary in length.
+        span_km = max_km - min_km
+        targets = {round(min_km + span_km * f, 2) for f in (0.25, 0.5, 0.75)}
+
+        found = {}
+        for start in starts:
+            for tgt in targets:
+                for mode in ('loop', 'outback'):
+                    stem, cycle, km = _search_route(edges, adj, start, tgt, mode, max_expansions=30000)
+                    if stem is None and cycle is None:
+                        continue
+                    total_mi = km * 0.621371
+                    if not (min_mi - 0.1 <= total_mi <= max_mi + 0.1):
+                        continue
+                    sig = frozenset((stem or []) + (cycle or []))
+                    if not sig or sig in found:
+                        continue
+                    geom, names = _route_geometry(edges, stem or [], cycle, start)
+                    named = [x for x in names if x]
+                    found[sig] = {
+                        'mode': mode,
+                        'total_mi': round(total_mi, 1),
+                        'oneway_mi': round(total_mi / 2, 1) if mode == 'outback' else None,
+                        'names': named[:8],
+                        'n_segments': len(stem or []) + len(cycle or []),
+                        'geometry': geom,
+                    }
+
+        # Within each length bucket prefer real named trails, then more segments.
+        items = sorted(found.items(),
+                       key=lambda kv: (0 if kv[1]['names'] else 1, -kv[1]['n_segments']))
+        # Spread suggestions across the length range (buckets) and balance loop vs
+        # out-and-back, so the list varies in distance and shows both route types.
+        buckets = 8
+        picked, used = [], set()
+        for b in range(buckets):
+            lo = min_mi + (max_mi - min_mi) * b / buckets
+            hi = min_mi + (max_mi - min_mi) * (b + 1) / buckets
+            cand = [(sig, r) for sig, r in items
+                    if sig not in used and lo <= r['total_mi'] <= hi]
+            if not cand:
+                continue
+            n_loop = sum(1 for p in picked if p['mode'] == 'loop')
+            pref = 'outback' if n_loop > len(picked) - n_loop else 'loop'
+            cand.sort(key=lambda kv: 0 if kv[1]['mode'] == pref else 1)
+            sig, r = cand[0]
+            picked.append(r)
+            used.add(sig)
+        if len(picked) < 8:  # sparse range: backfill with the best remaining
+            for sig, r in items:
+                if sig not in used:
+                    picked.append(r)
+                    used.add(sig)
+                    if len(picked) >= 8:
+                        break
+        picked.sort(key=lambda r: r['total_mi'])
+        result = {'routes': picked, 'count': len(found)}
+        cache_response(cache_key, result, ttl=1800)
+        return jsonify(result)
+    except Exception as ex:
+        logger.warning(f'route discover failed: {ex}')
         return jsonify({'error': 'Trail network lookup timed out — try again in a minute'}), 503
